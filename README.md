@@ -1,320 +1,192 @@
-<div align="center">
-  <a href="#" />
-    <img alt="Skateboard - Ship your React app in minutes" width="40%" src="https://github.com/user-attachments/assets/b7f2b098-503b-4439-8454-7eb45ae82307">
+<p align="center">
+  <img src="public/icons/icon.png" width="80" height="80" alt="dotBot icon">
+</p>
+
+<h1 align="center">dotBot</h1>
+
+<h3 align="center">Your local AI agent with memory, tools, and scheduled tasks</h3>
+
+<p align="center">
+  A personal AI assistant powered by Ollama that can search the web, read/write files, run code, remember things, and work on a schedule — all running locally on your machine.
+</p>
+
+<p align="center">
+  <a href="https://opensource.org/licenses/mit">
+    <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License">
   </a>
-  </div>
+</p>
 
-  <p align="center" style="margin-top: 40px; margin-bottom: 5px;">
-    <img src="public/icons/icon.png" width="60" height="60" alt="Skateboard Logo">
-  </p>
-  <h1 align="center" style="border-bottom: none; margin-bottom: 0;">Skateboard</h1>
-  <h3 align="center" style="margin-top: 0; font-weight: normal;">
-    a react starter with auth, stripe, shadcn, and sqlite
-  </h3>
-    <p align="center">
-    <a href="https://opensource.org/licenses/mit">
-      <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License">
-    </a>
-    <a href="https://github.com/stevederico/skateboard/stargazers">
-      <img src="https://img.shields.io/github/stars/stevederico/skateboard?style=social" alt="GitHub stars">
-    </a>
-    <a href="https://www.npmjs.com/package/create-skateboard-app">
-      <img src="https://img.shields.io/npm/v/create-skateboard-app?color=green" alt="npm version">
-    </a>
-  </p>
+---
 
-## 🎬 Demo
+<!-- Screenshots go here -->
 
-<div align="center">
-  <img width="75%" alt="skateboard dark mode demo" src="public/skateboard-dark.png" />
-</div>
+## What dotBot Can Do
 
-  <br />
- 
+- Chat with a local LLM through a clean, streaming UI
+- Remember facts, preferences, and context across conversations
+- Search the web with Brave Search API
+- Fetch and parse any URL
+- Read and write files in a sandboxed `~/.dotbot` directory
+- Execute JavaScript code with output capture
+- Schedule one-shot or recurring tasks (reminders, checks, automations)
+- Switch between any Ollama model on the fly
 
-</div>
+## Architecture
 
-<br />
+```
+ React 19 + Vite 7          Hono Server             Ollama
+ ┌─────────────┐        ┌──────────────────┐     ┌──────────┐
+ │  ChatView   │──SSE──>│  Agent Routes    │────>│ /api/chat│
+ │  (fetch +   │<──────>│  Agent Loop      │<────│ (stream) │
+ │  ReadStream) │        │  (max 10 iters)  │     └──────────┘
+ └─────────────┘        │        │         │
+                        │   Tool Executor  │
+                        │   ┌──────────┐   │
+                        │   │ Memory   │   │     ┌──────────┐
+                        │   │ Cron     │   │────>│ MongoDB  │
+                        │   │ Web      │   │     └──────────┘
+                        │   │ Files    │   │
+                        │   │ Code     │   │
+                        │   └──────────┘   │
+                        └──────────────────┘
+```
 
-## 🚀 Quick Start
+## Tech Stack
 
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| React | 19.2 | Frontend UI |
+| Vite | 7.1 | Build + dev server |
+| Tailwind CSS | 4.1 | Styling |
+| skateboard-ui | 2.9 | App shell (auth, routing, components) |
+| Hono | 4.7 | Backend HTTP server |
+| MongoDB | — | Agent state (sessions, memories, cron) |
+| Ollama | — | Local LLM inference |
+| Node.js | 22+ | Runtime |
+| Stripe | — | Subscription payments |
+
+## Prerequisites
+
+- **Node.js 22+**
+- **MongoDB** (local or Atlas)
+- **Ollama** installed and running
+
+Pull the default model:
 ```bash
-npx create-skateboard-app
+ollama pull gpt-oss:20b
 ```
 
-That's it, your app is now running at `http://localhost:5173` 🎉
+## Quick Start
 
-<br />
+1. **Clone the repo**
+   ```bash
+   git clone <your-repo-url> dotbot
+   cd dotbot
+   ```
 
-## ✨ What's Included
+2. **Install dependencies**
+   ```bash
+   npm run install-all
+   ```
 
-Everything you need to ship a production-ready app:
+3. **Configure environment** — create `backend/.env`:
+   ```bash
+   JWT_SECRET=your-random-secret-key
+   MONGODB_URL=mongodb://localhost:27017
+   STRIPE_KEY=sk_test_...
+   STRIPE_ENDPOINT_SECRET=whsec_...
+   BRAVE_API_KEY=your-brave-key        # optional, for web search
+   ```
 
-### 🏗️ **Application Shell Architecture (v1.1)**
-- **95% less boilerplate** - Focus on features, not infrastructure
-- **Shell + Content + Config** - Framework provides structure, you provide content
-- **Update once, fix everywhere** - All apps inherit improvements from skateboard-ui
-- **16-line main.jsx** - Just define your routes
-- **Convention over configuration** - Sensible defaults with escape hatches everywhere
+4. **Start Ollama**
+   ```bash
+   ollama serve
+   ```
 
-### 🔐 **Authentication & User Management**
-- **Sign up / Sign in** with JWT tokens
-- **Protected routes** with automatic redirects
-- **User context** management across your app
-- **Session persistence** with secure cookies
-- **App-specific auth isolation**
-- **Usage tracking** with configurable limits for free users
+5. **Start the app**
+   ```bash
+   npm start
+   ```
 
-### 💳 **Stripe Integration**
-- **Checkout flows** ready to go
-- **Subscription management** portal
-- **Webhook handling** for payment events
-- **Customer portal** integration
+   Frontend: `http://localhost:5173` | Backend: `http://localhost:8000`
 
-### 🎨 **Beautiful UI Components**
-- **50+ Shadcn/ui components** pre-configured
-- **Dark/Light mode** with system detection
-- **Mobile-ready design** with responsive sidebar and TabBar
-- **Landing page** that converts - fully customizable via constants.json
-- **Settings page** with user management
-- **Legal pages** (Terms, Privacy, EULA)
+## Configuration
 
-### 🛠️ **Developer Experience**
-- **Hot Module Replacement** with Vite 7.1+
-- **Zero config** - just works out of the box
-- **Multi-database support** - SQLite (default), MongoDB, PostgreSQL
-- **constants.json** - customize everything in one place
-- **Modern JavaScript** - no TypeScript complexity
-- **Built-in hooks** - useListData, useForm for common patterns
-- **API utilities** - apiRequest with automatic auth and error handling
+### Environment Variables
 
-<br />
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `JWT_SECRET` | Yes | — | Token signing key |
+| `MONGODB_URL` | Yes | — | MongoDB connection string |
+| `STRIPE_KEY` | Yes | — | Stripe secret key |
+| `STRIPE_ENDPOINT_SECRET` | Yes | — | Stripe webhook signing secret |
+| `BRAVE_API_KEY` | No | — | Brave Search API key |
+| `FREE_USAGE_LIMIT` | No | `20` | Monthly messages for free users |
+| `CORS_ORIGINS` | No | localhost | Allowed origins (production) |
+| `PORT` | No | `8000` | Backend port |
 
-
-
-
-
-## 📖 Frontend Configuration
-
-Update `src/constants.json` to customize your app:
+### Backend Config (`backend/config.json`)
 
 ```json
 {
-  "appName": "Your App Name",
-  "tagline": "Your Tagline", 
-  "cta": "Get Started"
-}
-```
-
-## 📖 Backend Configuration
-
-**Database Configuration** - Update `backend/config.json`:
-
-```json
-{
-  "client": "http://localhost:5173",
+  "staticDir": "../dist",
   "database": {
-    "db": "MyApp",
-    "dbType": "sqlite",
-    "connectionString": "./databases/MyApp.db"
+    "db": "dotbot",
+    "dbType": "mongodb",
+    "connectionString": "${MONGODB_URL}"
   }
 }
 ```
 
-Update to `backend/.env`:
+### App Config (`src/constants.json`)
+
+Key fields: `appName`, `tagline`, `pages`, `stripeProducts`, `backendURL`, `devBackendURL`
+
+## Agent Tools
+
+| Tool | Description |
+|------|-------------|
+| `memory_save` | Save facts and preferences to long-term memory |
+| `memory_search` | Search saved memories by content or tags |
+| `schedule_task` | Schedule a one-shot or recurring task |
+| `list_tasks` | List all active and completed tasks |
+| `cancel_task` | Cancel a scheduled task |
+| `web_search` | Search the web via Brave Search |
+| `web_fetch` | Fetch and parse any URL |
+| `file_read` | Read files from `~/.dotbot` |
+| `file_write` | Write files to `~/.dotbot` |
+| `run_code` | Execute JavaScript and capture output |
+
+## Default Model
+
+dotBot ships with `gpt-oss:20b` as the default. You can switch models in the chat UI or pull alternatives:
 
 ```bash
-# Sqlite remove below
-MONGODB_URL=mongodb+srv://user:pass@example-cluster.example.net/
-POSTGRES_URL=postgresql://user:pass@example-hostname:5432/myapp
+ollama pull llama3.3
+ollama pull mistral
+ollama pull codellama
 ```
 
-**Auth Variables** - Update to `backend/.env`:
-enter a unique random string below
+## Development
 
 ```bash
-JWT_SECRET=your-secret-key
-FREE_USAGE_LIMIT=20  # Optional: Monthly usage limit for free users (default: 20)
+npm run start      # Both frontend + backend
+npm run front      # Frontend only (Vite on :5173)
+npm run server     # Backend only (Hono on :8000)
+npm run build      # Production build
 ```
 
-**Supported Database Types:**
-- **SQLite** (default): `"dbType": "sqlite"`
-- **PostgreSQL**: `"dbType": "postgresql"` with `"connectionString": "${POSTGRES_URL}"`
-- **MongoDB**: `"dbType": "mongodb"` with `"connectionString": "${MONGODB_URL}"` with `"db": "SkateboardApp"`
+The Vite dev server proxies `/api` requests to the Hono backend on port 8000.
 
-<br />
-
-## 💳 Stripe Setup
-
-To enable payments, configure your Stripe products:
-
-1. **Create Product in Stripe Dashboard**
-   - Go to **Product Catalog** → **Create Product**
-   - Add **Name** and **Amount**
-   - Click **More Pricing Options**
-   - Scroll to **Lookup Key** at bottom
-   - Enter: `my_lookup_key`
-   - *This allows future pricing changes on stripe.com without updating your code*
-
-2. **Update Environment Variables**
-   ```bash
-   STRIPE_KEY=sk_live_your_secret_key
-   ```
-   
-   **Security Note:** Use your secret key OR create a restricted key with these permissions:
-   - **Read/Write:** Checkout Sessions
-   - **Read:** Customers, Prices, Products
-
-3. **Setup Webhook**
-   - Go to **stripe.com** → **Developers** (lower left) → **Webhooks**
-   - Click **Add Endpoint**
-   - Add your endpoint URL: `https://yourdomain.com/payment`
-   - Select these events:
-     - `customer.subscription.created` - Customer signed up for new plan
-     - `customer.subscription.deleted` - Customer's subscription ends  
-     - `customer.subscription.updated` - Subscription changes (plan switch, trial to active, etc.)
-   - Copy the **Signing Secret** to your environment:
-   ```bash
-   STRIPE_ENDPOINT_SECRET=whsec_your_webhook_secret
-   ```
-
-
-## 📈 Scaling Notes
-
-The default configuration uses in-memory stores for rate limiting and CSRF tokens. This works great for single-instance deployments.
-
-**For horizontal scaling** (multiple server instances):
-- Replace in-memory rate limiter with Redis
-- Move CSRF tokens to database or Redis
-- Use sticky sessions or shared session store
-
-See [Architecture Documentation](docs/ARCHITECTURE.md#scaling) for details.
-
-## 🏗️ Tech Stack
-
-Built with the latest and greatest:
-
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| **React** | v19 | UI Framework |
-| **skateboard-ui** | v2.9+ | Application Shell Framework |
-| **Vite** | v7.1+ | Build Tool & Dev Server |
-| **Tailwind CSS** | v4.1+ | Styling |
-| **Shadcn/ui** | Latest | Component Library |
-| **React Router** | v7.8+ | Routing |
-| **Hono** | v4+ | Backend Server |
-| **Deno** | v2.6.8+ | Runtime |
-| **Multi-Database** | Latest | SQLite, PostgreSQL, MongoDB |
-| **Stripe** | Latest | Payments |
-| **JWT** | Latest | Authentication |
-
-<br />
-
-## 📚 Architecture
-
-Skateboard uses an **Application Shell Architecture** where the framework (skateboard-ui) provides structure and your app provides content.
-
-**Your app in 3 parts:**
-1. **Shell** (skateboard-ui) - Routing, auth, context, utilities
-2. **Content** (your code) - Components and business logic
-3. **Config** (constants.json) - App-specific settings
-
-**Example main.jsx** (complete app):
-```javascript
-import { createSkateboardApp } from '@stevederico/skateboard-ui/App';
-import constants from './constants.json';
-import HomeView from './components/HomeView.jsx';
-
-const appRoutes = [
-  { path: 'home', element: <HomeView /> }
-];
-
-createSkateboardApp({ constants, appRoutes });
-```
-
-That's it! The shell handles routing, auth, layout, landing page, sign in/up, settings, payment, and all legal pages.
-
-**Learn more:**
-- [Architecture Documentation](docs/ARCHITECTURE.md) - Deep dive into the shell pattern
-- [Migration Guide](docs/MIGRATION.md) - Upgrade from any version
-
-<br />
-
-## 🚀 Deployment
-
-See the [Deployment Guide](docs/DEPLOY.md) for step-by-step instructions:
-
-- **Vercel** - Deploy both frontend and backend together (recommended)
-- **Render** - Separate frontend and backend services
-- **Netlify + Railway** - Netlify frontend with Railway backend
-- **Docker** - Container deployment with included Dockerfile
-
-<br />
-
-## 🤝 Contributing
-
-We love contributions!
+## Deployment
 
 ```bash
-# Fork the repo, then:
-git clone https://github.com/YOUR_USERNAME/skateboard
-cd skateboard
-deno install
-deno run start
+docker build -t dotbot .
+docker run -p 8000:8000 --env-file backend/.env dotbot
 ```
 
-<br />
+See [docs/DEPLOY.md](docs/DEPLOY.md) for Vercel, Render, Netlify, and Docker instructions.
 
-## 📬 Community & Support
+## License
 
-- **🐦 X**: [@stevederico](https://x.com/stevederico)
-- **🐛 Issues**: [GitHub Issues](https://github.com/stevederico/skateboard/issues)
-
-<br />
-
-## 🙏 Acknowledgements
-
-Built on the shoulders of giants:
-
-- [React](https://react.dev) - The library that powers the web
-- [Vite](https://vitejs.dev) - Lightning fast build tool
-- [Tailwind CSS](https://tailwindcss.com) - Utility-first CSS
-- [Shadcn/ui](https://ui.shadcn.com) - Beautiful components
-- [Stripe](https://stripe.com) - Payment infrastructure
-
-<br />
-
-## 🎪 Related Projects
-
-- [skateboard-ui](https://github.com/stevederico/skateboard-ui) - Component library
-- [skateboard-blog](https://github.com/stevederico/skateboard-blog) - Blog template
-- [create-skateboard-app](https://github.com/stevederico/create-skateboard-app) - CLI tool
-
-<br />
-
-
-## 🚀 Ready to Ship?
-
-```bash
-npx create-skateboard-app
-```
-
-<br />
-
-## 📄 License
-
-MIT License - use it however you want! See [LICENSE](LICENSE) for details.
-
-<br />
-
----
-
-<div align="center">
-  <p>
-    Built with ❤️ by <a href="https://github.com/stevederico">Steve Derico</a> and contributors
-  </p>
-  
-  <p>
-    <a href="https://github.com/stevederico/skateboard">⭐ Star us on GitHub</a> — it helps!
-  </p>
-</div>
+MIT License — see [LICENSE](LICENSE) for details.

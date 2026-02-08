@@ -35,26 +35,6 @@
             "title": "Chat",
             "url": "chat",
             "icon": "message-circle"
-        },
-        {
-            "title": "Dashboard",
-            "url": "home",
-            "icon": "layout-dashboard"
-        },
-        {
-            "title": "Analytics",
-            "url": "analytics",
-            "icon": "chart-bar"
-        },
-        {
-            "title": "Projects",
-            "url": "projects",
-            "icon": "folder"
-        },
-        {
-            "title": "Team",
-            "url": "team",
-            "icon": "users"
         }
     ],
     "stripeProducts": [

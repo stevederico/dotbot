@@ -1,5 +1,13 @@
 ## CHANGELOG
 
+0.2.0
+
+  Rewrite CLAUDE.md for dotBot
+  Rewrite README.md for dotBot
+  Remove boilerplate pages
+  Remove unused packages
+  Update default route to chat
+
 2.7.0
 
   Update skateboard-ui 2.9.7

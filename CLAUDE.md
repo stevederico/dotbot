@@ -1,276 +1,232 @@
 # CLAUDE.md
 
-Project guidance for Claude Code and AI agents working with this repository.
+Project guidance for AI agents working on the dotBot codebase.
 
 ## Development Commands
 
-**Primary Development:**
 ```bash
-npm run start          # Start both frontend and backend concurrently
-npm run front          # Frontend only (Vite dev server on :5173)
-npm run server         # Backend only (Hono server on :8000)
+npm run start          # Start frontend + backend concurrently
+npm run front          # Vite dev server on :5173
+npm run server         # Hono backend on :8000
+npm run build          # Production build
+npm run install-all    # Install root + backend workspace deps
 ```
 
-**Build Commands:**
-```bash
-npm run build          # Development build
-npm run prod           # Production build
-npm install-all        # Install all dependencies (root + workspace)
+**Ports:** Frontend `:5173` | Backend `:8000` | Ollama `:11434`
+
+## Architecture
+
+### Data Flow
+
+```
+User message → POST /api/agent/chat (SSE) → Agent Loop → Ollama /api/chat → Tools → Loop → SSE back
 ```
 
-## Code Standards
+### Key Decisions
 
-### Documentation Requirements
-
-**CRITICAL: Documentation must always match code.**
-
-When making ANY code changes, you MUST update:
-- JSDoc comments on modified functions/classes/components
-- Inline comments explaining complex logic
-- README.md if user-facing behavior changes
-- CLAUDE.md if architecture/patterns change
-- API docs if endpoints change
-- CHANGELOG.md for all changes (see commit protocol)
-
-**Before committing:**
-1. Review all modified functions - do JSDoc comments match current implementation?
-2. Check inline comments - do they explain current logic accurately?
-3. Verify examples in docs still work with changes
-4. Update version references if applicable
-
-**Example - Function Signature Change:**
-```javascript
-// WRONG: Changed function but not JSDoc
-/**
- * @param {string} email - User email
- */
-async function updateUser(userId, email) { ... }
-
-// CORRECT: Updated both code and JSDoc
-/**
- * @param {string} userId - User ID
- * @param {string} email - User email
- */
-async function updateUser(userId, email) { ... }
-```
-
-**Out-of-date documentation is worse than no documentation** - it misleads developers and wastes debugging time. Always keep docs in sync with code.
-
-## Architecture Overview
-
-### Application Shell Architecture (v1.1)
-
-Skateboard uses an **Application Shell Architecture** where skateboard-ui provides the framework (shell) and your app provides the content. This eliminates 95% of boilerplate.
-
-**Three-part architecture:**
-1. **Shell** (skateboard-ui package) - Routing, context, auth, utilities, components
-2. **Content** (your code) - Custom components and business logic
-3. **Config** (constants.json) - App-specific configuration
-
-**Key principle:** Update skateboard-ui package once, all apps inherit improvements.
-
-### Monorepo Structure
-- **Root**: React frontend with Vite 7.1+ build system using skateboard-ui
-- **Backend Workspace**: Hono server with multi-database support
+| Decision | Choice | Why |
+|----------|--------|-----|
+| Streaming | SSE (not WebSocket) | Simpler, POST-based, no connection state |
+| LLM | Ollama native `/api/chat` | Local inference, no API keys, model switching |
+| Agent state | MongoDB | Persistent sessions, memories, cron across restarts |
+| File I/O | Sandboxed to `~/.dotbot` | Security — agent can't escape sandbox |
+| Frontend shell | skateboard-ui | Auth, routing, layout, payments out of the box |
 
 ### Project Structure
+
 ```
-skateboard/
+dotbot/
 ├── src/
-│   ├── components/       # Your custom components (e.g., HomeView.jsx)
-│   ├── assets/
-│   │   └── styles.css   # Brand color override (7 lines)
-│   ├── main.jsx         # Route definitions (16 lines)
-│   └── constants.json   # All your app config
+│   ├── main.jsx                  # Route config (chat only)
+│   ├── constants.json            # App name, pages, pricing config
+│   ├── assets/styles.css         # Tailwind theme override
+│   └── components/
+│       └── ChatView.jsx          # Agent chat UI with SSE streaming
 ├── backend/
-│   ├── server.js        # Hono server
-│   ├── adapters/        # Database adapters (SQLite, PostgreSQL, MongoDB)
-│   ├── databases/       # SQLite database files
-│   └── config.json      # Backend config with database settings
-├── package.json         # Dependencies (includes skateboard-ui)
-└── vite.config.js       # Vite configuration (app-owned)
+│   ├── server.js                 # Hono server, auth, payments, agent mount
+│   ├── config.json               # DB type/connection config
+│   ├── adapters/
+│   │   ├── manager.js            # Database factory (selects provider)
+│   │   ├── mongodb.js            # MongoDB adapter
+│   │   ├── sqlite.js             # SQLite adapter
+│   │   └── postgres.js           # PostgreSQL adapter
+│   └── agent/
+│       ├── agent.js              # Agent loop — async generator, Ollama calls
+│       ├── tools.js              # Tool registry (all 10 tools)
+│       ├── routes.js             # SSE endpoint, Hono routes
+│       ├── session.js            # Conversation persistence, message trimming
+│       ├── memory.js             # Long-term memory (MongoDB text search)
+│       └── cron.js               # Scheduled tasks (30s poll loop)
+├── docs/                         # ARCHITECTURE, API, SCHEMA, DEPLOY, MIGRATION
+├── vite.config.js                # Vite 7.1 + Tailwind v4
+├── Dockerfile                    # Production container
+└── package.json                  # Monorepo with backend workspace
 ```
 
-**What's NOT in your app (provided by skateboard-ui):**
-- `context.jsx` - Imported from skateboard-ui/Context
-- Complex routing setup - Uses createSkateboardApp()
-- Full theme CSS - Imports base theme from skateboard-ui
+## Agent System
 
-**Result:** ~550 lines of boilerplate → ~26 lines
+### Agent Loop (`backend/agent/agent.js`)
 
-### Multi-Database Architecture
-The application uses a database factory pattern supporting three database types:
+Async generator that calls Ollama and executes tools in a loop.
 
-**Database Adapters** (`backend/adapters/`):
-- `sqlite.js` - Default SQLite provider using Node.js built-in DatabaseSync
-- `postgres.js` - PostgreSQL provider with connection pooling
-- `mongodb.js` - MongoDB provider with native driver
-- `manager.js` - Unified interface and provider selection
+1. POST to `http://localhost:11434/api/chat` with messages + tool definitions, `stream: true`
+2. Stream NDJSON response — accumulate text, collect tool_calls
+3. If tool_calls present: execute each tool, push results as `role: "tool"` messages, loop
+4. If no tool_calls: yield `done` event with final content, exit
+5. **Max 10 iterations** (safety limit)
 
-**Configuration** (`backend/config.json`):
-```json
+### Tools
+
+| Tool | Module | Description |
+|------|--------|-------------|
+| `memory_save` | memory.js | Save facts/preferences to long-term memory |
+| `memory_search` | memory.js | Full-text search over saved memories (top 5) |
+| `schedule_task` | cron.js | Schedule one-shot or recurring tasks |
+| `list_tasks` | cron.js | List all scheduled tasks |
+| `cancel_task` | cron.js | Delete a scheduled task by ID |
+| `web_search` | tools.js | Brave Search API (requires `BRAVE_API_KEY`) |
+| `web_fetch` | tools.js | Fetch + parse URL content (8000 char limit) |
+| `file_read` | tools.js | Read file from `~/.dotbot` directory |
+| `file_write` | tools.js | Write file to `~/.dotbot` directory |
+| `run_code` | tools.js | Execute JavaScript in subprocess (10s timeout) |
+
+### Adding a New Tool
+
+1. Define the tool in `backend/agent/tools.js`:
+```javascript
 {
-  "client": "http://localhost:5173",
-  "database": {
-    "db": "MyApp",
-    "dbType": "sqlite",
-    "connectionString": "./databases/MyApp.db"
+  name: "my_tool",
+  description: "What this tool does",
+  parameters: {
+    type: "object",
+    properties: {
+      param1: { type: "string", description: "..." }
+    },
+    required: ["param1"]
+  },
+  execute: async ({ param1 }) => {
+    // Tool logic here
+    return "result string";
   }
 }
 ```
+2. Push it into the `tools` array in the same file
+3. The agent loop auto-discovers tools from the registry
+4. Restart the server — Ollama receives updated tool definitions on next chat
 
-### Authentication & Security
-- JWT tokens in HttpOnly cookies
-- CSRF token protection for state-changing operations
-- Bcrypt password hashing with 10 salt rounds
-- JWT with 30-day expiration
-- Rate limiting (10 req/15min for auth, 5 req/15min for payments, 300 req/15min global)
-- Security headers (CSP, HSTS, X-Frame-Options, etc.)
+### Sessions (`sessions` collection)
 
-### Build System Integration
+- Keyed by user ID (from JWT)
+- Default model: `gpt-oss:20b`
+- Message trimming: keeps system prompt + last 39 messages (40 total)
+- System prompt refreshes on every request (updates timestamp)
 
-**Vite Configuration** (v1.1+ app-owned):
-Apps own their `vite.config.js` directly. See [reference implementation](https://github.com/stevederico/skateboard/blob/master/vite.config.js).
+### Memory (`memories` collection)
 
-**Styling:**
-```css
-/* src/assets/styles.css */
-@import "@stevederico/skateboard-ui/styles.css";
+- MongoDB text index on `content` + `tags`
+- `memory_save` inserts with optional tags array
+- `memory_search` returns top 5 by relevance score
 
-@source '../../node_modules/@stevederico/skateboard-ui';
+### Cron (`cron_tasks` collection)
 
-@theme {
-  --color-app: var(--color-purple-500);
-}
+- 30-second poll loop checks for `nextRunAt <= now && enabled: true`
+- Fires by injecting `[Heartbeat] {prompt}` into the session
+- One-shot tasks: set `enabled: false` after fire
+- Recurring tasks: update `nextRunAt = now + intervalMs`
+- Interval parsing: `"30m"`, `"2h"`, `"1d"`, `"1w"`
+
+## API Routes
+
+### Standard Routes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/health` | Health check |
+| POST | `/api/signup` | Create user |
+| POST | `/api/signin` | Sign in |
+| POST | `/api/signout` | Sign out |
+| GET | `/api/me` | Current user profile |
+| PUT | `/api/me` | Update user (name) |
+| POST | `/api/usage` | Check/track usage |
+| POST | `/api/checkout` | Stripe checkout session |
+| POST | `/api/portal` | Stripe billing portal |
+| POST | `/api/payment` | Stripe webhook |
+
+### Agent Routes (mounted if MongoDB available)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/agent/status` | Ollama connection + available models |
+| GET | `/api/agent/tools` | List registered tools |
+| POST | `/api/agent/chat` | Send message, returns SSE stream |
+| POST | `/api/agent/clear` | Clear conversation history |
+| POST | `/api/agent/model` | Set Ollama model for session |
+
+## SSE Event Types
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `text_delta` | `{ text }` | Incremental text token from model |
+| `tool_start` | `{ name, input }` | Tool execution started |
+| `tool_result` | `{ name, result }` | Tool completed successfully |
+| `tool_error` | `{ name, error }` | Tool execution failed |
+| `stats` | `{ model, eval_count, eval_duration, total_duration }` | Ollama performance stats |
+| `done` | `{ content }` | Final answer, loop complete |
+| `error` | `{ error }` | Fatal error |
+
+## MongoDB Collections
+
+| Collection | Key Indexes | Purpose |
+|------------|-------------|---------|
+| `Users` | `email: 1 (unique)` | User accounts |
+| `Auths` | — | Email/password credentials |
+| `WebhookEvents` | — | Stripe webhook dedup |
+| `sessions` | `id: 1 (unique)` | Agent conversation history |
+| `memories` | `content: "text", tags: "text"` | Long-term agent memory |
+| `cron_tasks` | `nextRunAt: 1`, `sessionId: 1` | Scheduled tasks |
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `JWT_SECRET` | Yes | — | Token signing key |
+| `STRIPE_KEY` | Yes | — | Stripe secret key |
+| `STRIPE_ENDPOINT_SECRET` | Yes | — | Stripe webhook signing |
+| `MONGODB_URL` | Yes | — | MongoDB connection string |
+| `BRAVE_API_KEY` | No | — | Brave Search API (for `web_search` tool) |
+| `FREE_USAGE_LIMIT` | No | `20` | Monthly free-tier usage cap |
+| `CORS_ORIGINS` | No | `localhost:5173,8000` | Allowed origins (production) |
+| `FRONTEND_URL` | No | origin header | Frontend URL for Stripe redirects |
+| `PORT` | No | `8000` | Backend server port |
+
+## Key Patterns
+
+### Frontend SSE Parsing (`ChatView.jsx`)
+
+```javascript
+const response = await fetch('/api/agent/chat', { method: 'POST', body, signal });
+const reader = response.body.getReader();
+// Read NDJSON lines, parse JSON, switch on event.type
 ```
 
-## UI Components — shadcn Primitives
+Uses `fetch` + `ReadableStream` (not `EventSource` — POST not supported by EventSource).
 
-**Always use the shadcn primitives from `@stevederico/skateboard-ui/shadcn/ui` when building views.** The goal is the standard shadcn design look and feel — clean, consistent, and composable.
+### Skateboard-UI Imports
 
-**Import path:** `@stevederico/skateboard-ui/shadcn/ui/<component>`
-
-**Available components:**
-`accordion`, `alert`, `alert-dialog`, `aspect-ratio`, `avatar`, `badge`, `breadcrumb`, `button`, `button-group`, `calendar`, `card`, `carousel`, `chart`, `checkbox`, `collapsible`, `command`, `context-menu`, `dialog`, `drawer`, `dropdown-menu`, `empty`, `field`, `hover-card`, `input`, `input-group`, `item`, `kbd`, `label`, `menubar`, `navigation-menu`, `pagination`, `popover`, `progress`, `radio-group`, `resizable`, `scroll-area`, `select`, `separator`, `sheet`, `sidebar`, `skeleton`, `slider`, `sonner`, `spinner`, `switch`, `table`, `tabs`, `textarea`, `toggle`, `toggle-group`, `tooltip`
-
-**Rules:**
-- Prefer shadcn components over custom HTML elements (e.g., use `<Button>` not `<button>`, `<Card>` not `<div className="card">`)
-- Compose views from these primitives — don't reinvent patterns they already solve
-- Check available components before building custom UI; if shadcn has it, use it
-- Combine with Tailwind utility classes for layout and spacing
-
-**Example:**
 ```javascript
 import { Button } from '@stevederico/skateboard-ui/shadcn/ui/button';
-import { Card, CardHeader, CardTitle, CardContent } from '@stevederico/skateboard-ui/shadcn/ui/card';
-import { Input } from '@stevederico/skateboard-ui/shadcn/ui/input';
-import { Label } from '@stevederico/skateboard-ui/shadcn/ui/label';
-```
-
-## Key Implementation Patterns
-
-### API Requests
-
-```javascript
 import { apiRequest } from '@stevederico/skateboard-ui/Utilities';
-
-// GET request
-const deals = await apiRequest('/deals');
-
-// POST with body
-const newDeal = await apiRequest('/deals', {
-  method: 'POST',
-  body: JSON.stringify({ name: 'New Deal', amount: 5000 })
-});
-```
-
-**Features:**
-- Auto-includes credentials
-- Auto-adds CSRF token for mutations
-- Auto-redirects to /signout on 401
-- 30-second timeout
-
-### Data Fetching with Hooks
-
-```javascript
-import { useListData } from '@stevederico/skateboard-ui/Utilities';
-
-function DealsView() {
-  const { data, loading, error, refetch } = useListData('/deals');
-
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error}</div>;
-
-  return data.map(deal => <DealCard key={deal.id} {...deal} />);
-}
-```
-
-### Context Usage
-
-```javascript
 import { getState } from '@stevederico/skateboard-ui/Context';
-
-function MyComponent() {
-  const { state, dispatch } = getState();
-  const user = state.user;
-
-  // Update user
-  dispatch({ type: 'SET_USER', payload: newUserData });
-
-  // Clear user (sign out)
-  dispatch({ type: 'CLEAR_USER' });
-}
 ```
 
-### Environment Setup
-Backend requires `.env` file with:
-- `JWT_SECRET` - Token signing key (required)
-- `STRIPE_KEY` - Payment processing (required)
-- `STRIPE_ENDPOINT_SECRET` - Webhook verification (required)
-- `CORS_ORIGINS` - Comma-separated allowed origins (production)
-- `FRONTEND_URL` - Frontend URL for Stripe redirects (production)
-- `FREE_USAGE_LIMIT` - Usage limit for free users (default: 20)
-- `MONGODB_URL`, `POSTGRES_URL`, `DATABASE_URL` - Database connections (production)
+### Security Stack
 
-## Documentation
+- JWT in HttpOnly cookies (30-day expiry)
+- CSRF token for mutations (24-hour expiry)
+- Bcrypt with 10 salt rounds
+- Rate limiting: 10 req/15min auth, 5 req/15min payments, 300 req/15min global
+- Security headers: CSP, HSTS, X-Frame-Options
 
-**Reference:**
-- [Architecture](docs/ARCHITECTURE.md) - Application Shell pattern, production config
-- [Migration](docs/MIGRATION.md) - Upgrade between versions
-- [Deployment](docs/DEPLOY.md) - Vercel, Render, Netlify, Docker
-- [API Reference](docs/API.md) - REST endpoint documentation
-- [Schema](docs/SCHEMA.md) - Database schema reference
+## Documentation Requirements
 
-**Version:**
-- skateboard@2.6.0
-- skateboard-ui@2.9.3
-
-## Updating from Skateboard Boilerplate
-
-This project was created from the skateboard boilerplate. The `skateboardVersion` field in package.json indicates which version was used.
-
-**Reference repo:** https://github.com/stevederico/skateboard
-
-### Update Workflow
-
-1. Check `skateboardVersion` in package.json against latest release
-2. Review CHANGELOG.md in the reference repo for changes
-3. Update skateboard-ui: `npm install @stevederico/skateboard-ui@latest`
-4. Compare and update boilerplate files
-5. Update `skateboardVersion` field after applying changes
-
-### Safe to Update (review and apply)
-- `backend/server.js` - Server logic, security updates
-- `backend/adapters/*` - Database adapters
-- `vite.config.js` - Build configuration
-- `src/assets/styles.css` - Theme variables (merge carefully)
-
-### Never Auto-Update (app-specific)
-- `constants.json` - App configuration
-- `src/components/*` - Custom components
-- `backend/config.json` - Database/environment config
-
-### Important
-Do NOT automatically apply boilerplate updates. Always consult the user first and show what changes would be made.
-
-make sure you read the readme in the @stevederico/skateboard-ui package
+When modifying code, keep JSDoc in sync with implementation. Update CLAUDE.md if architecture changes. Update changelog.md for all changes.
