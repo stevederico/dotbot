@@ -313,12 +313,7 @@ export default function ChatView() {
 
   return (
     <div className="flex flex-col flex-1 h-full">
-      <Header
-        title="Chat"
-        buttonTitle={!isUserSubscriber && usageInfo.remaining >= 0 ? `${usageInfo.remaining}` : undefined}
-        buttonClass={!isUserSubscriber && usageInfo.remaining >= 0 ? "rounded-full w-10 h-10 flex items-center justify-center text-lg" : ""}
-        onButtonTitleClick={!isUserSubscriber ? () => showUpgradeSheet(upgradeSheetRef) : undefined}
-      />
+      <Header title="Chat" />
 
       {/* Toolbar: model picker, status, clear */}
       <div className="flex items-center gap-2 px-4 py-2 border-b bg-background">
@@ -373,17 +368,19 @@ export default function ChatView() {
                 </div>
               )}
 
-              <Card className={`py-0 gap-0 shadow-none ring-0 ${
-                msg.role === 'user'
-                  ? 'bg-app text-white rounded-br-sm'
-                  : msg.isError
-                    ? 'bg-destructive/10 border-destructive/20 rounded-bl-sm'
-                    : 'bg-accent rounded-bl-sm'
-              }`}>
-                <CardContent className="px-4 py-2.5">
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                </CardContent>
-              </Card>
+              {msg.content && (
+                <Card className={`py-0 gap-0 shadow-none ring-0 ${
+                  msg.role === 'user'
+                    ? 'bg-app text-white rounded-br-sm'
+                    : msg.isError
+                      ? 'bg-destructive/10 border-destructive/20 rounded-bl-sm'
+                      : 'bg-accent rounded-bl-sm'
+                }`}>
+                  <CardContent className="px-4 py-2.5">
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </div>
         ))}
@@ -405,7 +402,7 @@ export default function ChatView() {
       </div>
 
       {/* Input area */}
-      <div className="p-4 pb-20 md:pb-4 border-t bg-background">
+      <div className="p-4 pb-20 md:pb-4 bg-background rounded-b-xl">
         <div className="flex gap-2">
           <Input
             type="text"
@@ -450,14 +447,32 @@ export default function ChatView() {
 }
 
 /**
+ * Format tool input into a short inline summary string.
+ *
+ * Extracts the most relevant parameter (e.g. query, url, path, name)
+ * and truncates it for display next to the tool name badge.
+ *
+ * @param {Object} input - Tool call input parameters
+ * @returns {string} Short summary string or empty string
+ */
+function formatToolInputSummary(input) {
+  if (!input || typeof input !== "object") return "";
+  const key = input.query || input.url || input.path || input.name || input.content;
+  if (!key) return "";
+  const str = String(key);
+  return str.length > 40 ? str.slice(0, 40) + "..." : str;
+}
+
+/**
  * Inline tool call display badge
  *
  * Shows tool name with running/done/error status indicator.
- * Expandable to show result on click.
+ * Displays a short input summary inline (e.g. query, url, path).
+ * Expandable on click to show full input parameters and result.
  *
  * @param {Object} props
- * @param {Object} props.toolCall - Tool call object with name, status, result
- * @returns {JSX.Element} Tool call badge
+ * @param {Object} props.toolCall - Tool call object with name, input, status, result
+ * @returns {JSX.Element} Tool call badge with expandable details
  */
 function ToolCallBadge({ toolCall }) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -474,6 +489,8 @@ function ToolCallBadge({ toolCall }) {
     error: "bg-red-500/10 text-red-600 border-red-200",
   }[toolCall.status];
 
+  const summary = formatToolInputSummary(toolCall.input);
+
   return (
     <div>
       <button
@@ -486,12 +503,26 @@ function ToolCallBadge({ toolCall }) {
           className={toolCall.status === 'running' ? 'animate-spin' : ''}
         />
         {toolCall.name.replace(/_/g, " ")}
+        {summary && (
+          <span className="opacity-60 ml-0.5 truncate max-w-48">{summary}</span>
+        )}
       </button>
-      {isExpanded && toolCall.result && (
-        <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-x-auto max-h-32 whitespace-pre-wrap">
-          {toolCall.result.slice(0, 500)}
-          {toolCall.result.length > 500 ? "..." : ""}
-        </pre>
+      {isExpanded && (
+        <div className="mt-1 space-y-1">
+          {toolCall.input && Object.keys(toolCall.input).length > 0 && (
+            <pre className="p-2 bg-muted rounded text-xs overflow-x-auto max-h-24 whitespace-pre-wrap text-muted-foreground">
+              {Object.entries(toolCall.input).map(([k, v]) =>
+                `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`
+              ).join("\n")}
+            </pre>
+          )}
+          {toolCall.result && (
+            <pre className="p-2 bg-muted rounded text-xs overflow-x-auto max-h-32 whitespace-pre-wrap">
+              {toolCall.result.slice(0, 500)}
+              {toolCall.result.length > 500 ? "..." : ""}
+            </pre>
+          )}
+        </div>
       )}
     </div>
   );

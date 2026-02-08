@@ -1,5 +1,12 @@
 ## CHANGELOG
 
+0.2.1
+
+  Add tool parameter badges
+  Fix empty assistant bubble
+  Fix bottom corner overlap
+  Remove usage counter
+
 0.2.0
 
   Rewrite CLAUDE.md for dotBot
