@@ -1,32 +1,33 @@
 import Header from '@stevederico/skateboard-ui/Header';
 import DynamicIcon from '@stevederico/skateboard-ui/DynamicIcon';
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import Markdown from "react-markdown";
 import { getBackendURL, getCSRFToken, apiRequest } from '@stevederico/skateboard-ui/Utilities';
 import { getState } from '@stevederico/skateboard-ui/Context';
 import { Input } from '@stevederico/skateboard-ui/shadcn/ui/input';
 import { Button } from '@stevederico/skateboard-ui/shadcn/ui/button';
 import { Card, CardContent } from '@stevederico/skateboard-ui/shadcn/ui/card';
-import { Badge } from '@stevederico/skateboard-ui/shadcn/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@stevederico/skateboard-ui/shadcn/ui/select';
 
 /**
- * Chat view with SSE streaming to DotBot agent backend
+ * Chat view with SSE streaming to DotBot agent backend.
  *
- * Features:
- * - SSE streaming via fetch + ReadableStream (POST not supported by EventSource)
- * - Model picker populated from Ollama /api/agent/status
- * - Tool call display inline (running/done/error states)
- * - Stop button during streaming (AbortController)
- * - Clear chat button
- * - No usage limits — unlimited messages
- * - Auto-scroll to latest message
+ * Reads sessionId from the `?s=` URL search param. On mount:
+ * - If no `?s=` param: fetches session list, navigates to most recent or creates new
+ * - If `?s=` present: loads history for that session
+ *
+ * Dispatches `window` "sessions-updated" event after sends so ChatSidebar refreshes.
  *
  * @component
  * @returns {JSX.Element} Chat view with agent interface
  */
 export default function ChatView() {
   const { state, dispatch } = getState();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const sessionId = searchParams.get("s");
+
   const requireAuth = useCallback((callback) => {
     if (state.user) {
       callback();
@@ -53,11 +54,42 @@ export default function ChatView() {
     scrollToBottom();
   }, [messages, isStreaming]);
 
-  // Fetch Ollama status, models, and conversation history on mount
+  // Resolve session on mount — if no ?s= param, fetch sessions and navigate
   useEffect(() => {
+    if (!state.user) {
+      setIsLoading(false);
+      return;
+    }
+    if (sessionId) return; // Already have a session, handled below
+
+    const resolveSession = async () => {
+      try {
+        const data = await apiRequest("/agent/sessions");
+        if (data.sessions?.length > 0) {
+          navigate(`/app/chat?s=${data.sessions[0].id}`, { replace: true });
+        } else {
+          // No sessions — create one
+          const newSession = await apiRequest("/agent/sessions", { method: "POST" });
+          navigate(`/app/chat?s=${newSession.id}`, { replace: true });
+        }
+      } catch (err) {
+        console.error("Failed to resolve session:", err);
+        setIsLoading(false);
+      }
+    };
+    resolveSession();
+  }, [state.user, sessionId, navigate]);
+
+  // Fetch status and history when sessionId changes
+  useEffect(() => {
+    if (!state.user || !sessionId) return;
+
+    setIsLoading(true);
+    setMessages([]);
+
     const fetchStatus = async () => {
       try {
-        const data = await apiRequest("/agent/status");
+        const data = await apiRequest(`/agent/status?sessionId=${sessionId}`);
         setOllamaStatus(data);
         if (data.currentModel) setSelectedModel(data.currentModel);
       } catch (err) {
@@ -67,7 +99,7 @@ export default function ChatView() {
 
     const fetchHistory = async () => {
       try {
-        const data = await apiRequest("/agent/history");
+        const data = await apiRequest(`/agent/history?sessionId=${sessionId}`);
         if (data.messages?.length) {
           setMessages(data.messages.map((m) => ({
             id: crypto.randomUUID(),
@@ -80,12 +112,8 @@ export default function ChatView() {
       }
     };
 
-    if (state.user) {
-      Promise.all([fetchStatus(), fetchHistory()]).finally(() => setIsLoading(false));
-    } else {
-      setIsLoading(false);
-    }
-  }, [state.user]);
+    Promise.all([fetchStatus(), fetchHistory()]).finally(() => setIsLoading(false));
+  }, [state.user, sessionId]);
 
   /**
    * Handle model change from the picker
@@ -97,7 +125,7 @@ export default function ChatView() {
     try {
       await apiRequest("/agent/model", {
         method: "POST",
-        body: JSON.stringify({ model }),
+        body: JSON.stringify({ model, sessionId }),
       });
     } catch (err) {
       console.error("Failed to set model:", err);
@@ -105,11 +133,15 @@ export default function ChatView() {
   };
 
   /**
-   * Clear the conversation history
+   * Clear the conversation history for the current session
    */
   const handleClear = async () => {
+    if (!sessionId) return;
     try {
-      await apiRequest("/agent/clear", { method: "POST" });
+      await apiRequest("/agent/clear", {
+        method: "POST",
+        body: JSON.stringify({ sessionId }),
+      });
       setMessages([]);
     } catch (err) {
       console.error("Failed to clear chat:", err);
@@ -128,10 +160,10 @@ export default function ChatView() {
   };
 
   /**
-   * Send a message and stream the agent response via SSE
+   * Send a message and stream the agent response via SSE.
    *
-   * Uses fetch + ReadableStream to parse SSE events from POST endpoint.
-   * Displays tool calls inline.
+   * Passes sessionId in the POST body. Dispatches "sessions-updated"
+   * event after a successful send so the sidebar refreshes titles.
    *
    * @async
    */
@@ -149,11 +181,9 @@ export default function ChatView() {
     setNewMessage("");
     setIsStreaming(true);
 
-    // Create abort controller for stop button
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // Placeholder for assistant response
     const assistantId = crypto.randomUUID();
     setMessages(prev => [...prev, {
       id: assistantId,
@@ -172,7 +202,7 @@ export default function ChatView() {
           "Content-Type": "application/json",
           ...(csrfToken && { "X-CSRF-Token": csrfToken }),
         },
-        body: JSON.stringify({ message: userMsg.content }),
+        body: JSON.stringify({ message: userMsg.content, sessionId }),
       });
 
       if (!res.ok) {
@@ -207,9 +237,11 @@ export default function ChatView() {
           }
         }
       }
+
+      // Notify sidebar to refresh (title may have been set from first message)
+      window.dispatchEvent(new Event("sessions-updated"));
     } catch (err) {
       if (err.name === "AbortError") {
-        // User stopped — just mark as done
         setMessages(prev => prev.map(m =>
           m.id === assistantId
             ? { ...m, content: m.content + "\n\n*[Stopped]*" }

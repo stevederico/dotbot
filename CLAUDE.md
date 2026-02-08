@@ -37,11 +37,13 @@ User message → POST /api/agent/chat (SSE) → Agent Loop → Ollama /api/chat 
 ```
 dotbot/
 ├── src/
-│   ├── main.jsx                  # Route config (chat only)
+│   ├── main.jsx                  # Route config, custom Layout override
 │   ├── constants.json            # App name, pages, pricing config
 │   ├── assets/styles.css         # Tailwind theme override
 │   └── components/
-│       └── ChatView.jsx          # Agent chat UI with SSE streaming
+│       ├── ChatView.jsx          # Agent chat UI with SSE streaming
+│       ├── ChatSidebar.jsx       # Conversation history sidebar
+│       └── Layout.jsx            # Custom layout (swaps in ChatSidebar)
 ├── backend/
 │   ├── server.js                 # Hono server, auth, payments, agent mount
 │   ├── config.json               # DB type/connection config
@@ -53,8 +55,8 @@ dotbot/
 │   └── agent/
 │       ├── agent.js              # Agent loop — async generator, Ollama calls
 │       ├── tools.js              # Tool registry (all 10 tools)
-│       ├── routes.js             # SSE endpoint, Hono routes
-│       ├── session.js            # Conversation persistence, message trimming
+│       ├── routes.js             # SSE endpoint, session CRUD, Hono routes
+│       ├── session.js            # Multi-session store, migration, message trimming
 │       ├── memory.js             # Long-term memory (MongoDB text search)
 │       └── cron.js               # Scheduled tasks (30s poll loop)
 ├── docs/                         # ARCHITECTURE, API, SCHEMA, DEPLOY, MIGRATION
@@ -116,10 +118,13 @@ Async generator that calls Ollama and executes tools in a loop.
 
 ### Sessions (`sessions` collection)
 
-- Keyed by user ID (from JWT)
+- Multi-session: each user can have many conversations
+- Keyed by UUID (`id`), with `owner` field for user ID
+- `title` auto-populated from first user message (60 char max)
 - Default model: `gpt-oss:20b`
 - Message trimming: keeps system prompt + last 39 messages (40 total)
 - System prompt refreshes on every request (updates timestamp)
+- Legacy migration: old single-session docs get `owner = id`, new UUID for `id`
 
 ### Memory (`memories` collection)
 
@@ -156,11 +161,15 @@ Async generator that calls Ollama and executes tools in a loop.
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/api/agent/sessions` | List user's sessions |
+| POST | `/api/agent/sessions` | Create new session |
+| DELETE | `/api/agent/sessions/:id` | Delete session (ownership verified) |
 | GET | `/api/agent/status` | Ollama connection + available models |
+| GET | `/api/agent/history` | Conversation messages (`?sessionId=`) |
 | GET | `/api/agent/tools` | List registered tools |
-| POST | `/api/agent/chat` | Send message, returns SSE stream |
-| POST | `/api/agent/clear` | Clear conversation history |
-| POST | `/api/agent/model` | Set Ollama model for session |
+| POST | `/api/agent/chat` | Send message, returns SSE stream (`{ message, sessionId }`) |
+| POST | `/api/agent/clear` | Clear conversation history (`{ sessionId }`) |
+| POST | `/api/agent/model` | Set Ollama model for session (`{ sessionId, model }`) |
 
 ## SSE Event Types
 
@@ -181,7 +190,7 @@ Async generator that calls Ollama and executes tools in a loop.
 | `Users` | `email: 1 (unique)` | User accounts |
 | `Auths` | — | Email/password credentials |
 | `WebhookEvents` | — | Stripe webhook dedup |
-| `sessions` | `id: 1 (unique)` | Agent conversation history |
+| `sessions` | `id: 1 (unique)`, `owner: 1, updatedAt: -1` | Multi-session conversation history |
 | `memories` | `content: "text", tags: "text"` | Long-term agent memory |
 | `cron_tasks` | `nextRunAt: 1`, `sessionId: 1` | Scheduled tasks |
 

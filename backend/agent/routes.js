@@ -6,13 +6,24 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { agentLoop, getOllamaStatus } from "./agent.js";
 import { tools } from "./tools.js";
-import { getSession, saveSession, clearSession, setModel, trimMessages } from "./session.js";
+import {
+  getSession,
+  getOrCreateDefaultSession,
+  createSession,
+  saveSession,
+  clearSession,
+  setModel,
+  listSessions,
+  deleteSession,
+  trimMessages,
+} from "./session.js";
 
 /**
  * Create agent routes with injected middleware
  *
  * Routes accept authMiddleware and csrfProtection as factory params
  * so they integrate with the existing server.js security stack.
+ * All session-scoped routes require a sessionId param (body or query).
  *
  * @param {Function} authMiddleware - JWT auth middleware from server.js
  * @param {Function} csrfProtection - CSRF token middleware from server.js
@@ -21,18 +32,57 @@ import { getSession, saveSession, clearSession, setModel, trimMessages } from ".
 export function createAgentRoutes(authMiddleware, csrfProtection) {
   const agent = new Hono();
 
+  // ── Session CRUD ────────────────────────────────────────────
+
+  /**
+   * GET /sessions — list all sessions for the authenticated user
+   */
+  agent.get("/sessions", authMiddleware, async (c) => {
+    const userID = c.get("userID");
+    const sessions = await listSessions(userID);
+    return c.json({ sessions });
+  });
+
+  /**
+   * POST /sessions — create a new session
+   */
+  agent.post("/sessions", authMiddleware, csrfProtection, async (c) => {
+    const userID = c.get("userID");
+    const session = await createSession(userID);
+    return c.json({ id: session.id, title: session.title, model: session.model });
+  });
+
+  /**
+   * DELETE /sessions/:id — delete a session (ownership verified)
+   */
+  agent.delete("/sessions/:id", authMiddleware, csrfProtection, async (c) => {
+    const userID = c.get("userID");
+    const sessionId = c.req.param("id");
+    const result = await deleteSession(sessionId, userID);
+    if (result.deletedCount === 0) {
+      return c.json({ error: "Session not found" }, 404);
+    }
+    return c.json({ ok: true });
+  });
+
+  // ── Agent Routes (session-scoped) ───────────────────────────
+
   /**
    * GET /status — Ollama connection status + available models
+   *
+   * Optionally accepts ?sessionId= to return the model for a specific session.
    */
   agent.get("/status", authMiddleware, async (c) => {
     const status = await getOllamaStatus();
     const userID = c.get("userID");
+    const sessionId = c.req.query("sessionId");
 
-    // Also return the user's current model
     let currentModel = "llama3.3";
     try {
-      const session = await getSession(userID);
-      currentModel = session.model;
+      const session = sessionId
+        ? await getSession(sessionId, userID)
+        : await getOrCreateDefaultSession(userID);
+      if (session) currentModel = session.model;
     } catch {
       // Session may not exist yet
     }
@@ -41,14 +91,21 @@ export function createAgentRoutes(authMiddleware, csrfProtection) {
   });
 
   /**
-   * GET /history — return conversation messages for the current session
+   * GET /history — return conversation messages for a session
+   *
+   * Requires ?sessionId= query param.
    */
   agent.get("/history", authMiddleware, async (c) => {
     const userID = c.get("userID");
+    const sessionId = c.req.query("sessionId");
+
     try {
-      const session = await getSession(userID);
+      const session = sessionId
+        ? await getSession(sessionId, userID)
+        : await getOrCreateDefaultSession(userID);
+      if (!session) return c.json({ messages: [] });
       const messages = session.messages.filter((m) => m.role !== "system");
-      return c.json({ messages });
+      return c.json({ messages, sessionId: session.id });
     } catch {
       return c.json({ messages: [] });
     }
@@ -69,14 +126,13 @@ export function createAgentRoutes(authMiddleware, csrfProtection) {
   /**
    * POST /chat — send a message, returns SSE stream
    *
-   * Uses fetch + ReadableStream parsing on the client side (not EventSource,
-   * since EventSource doesn't support POST). The stream emits JSON-encoded
-   * SSE events matching the agentLoop event types.
+   * Body: { message, sessionId }
+   * If sessionId is omitted, uses the user's most recent session.
    */
   agent.post("/chat", authMiddleware, csrfProtection, async (c) => {
     const userID = c.get("userID");
     const body = await c.req.json();
-    const { message } = body;
+    const { message, sessionId } = body;
 
     if (!message || typeof message !== "string" || message.trim().length === 0) {
       return c.json({ error: "Message is required" }, 400);
@@ -88,8 +144,19 @@ export function createAgentRoutes(authMiddleware, csrfProtection) {
 
     return streamSSE(c, async (stream) => {
       try {
-        // Get or create session for this user
-        const session = await getSession(userID);
+        // Get or resolve session
+        const session = sessionId
+          ? await getSession(sessionId, userID)
+          : await getOrCreateDefaultSession(userID);
+
+        if (!session) {
+          await stream.writeSSE({
+            event: "error",
+            data: JSON.stringify({ type: "error", error: "Session not found" }),
+          });
+          return;
+        }
+
         let messages = session.messages;
 
         // Add user message
@@ -112,13 +179,17 @@ export function createAgentRoutes(authMiddleware, csrfProtection) {
         }
 
         // Save conversation state after completion
-        await saveSession(userID, messages, session.model);
+        await saveSession(session.id, messages, session.model);
       } catch (err) {
         if (err.name === "AbortError") {
           // Client disconnected — save what we have
           try {
-            const session = await getSession(userID);
-            await saveSession(userID, session.messages, session.model);
+            const session = sessionId
+              ? await getSession(sessionId, userID)
+              : await getOrCreateDefaultSession(userID);
+            if (session) {
+              await saveSession(session.id, session.messages, session.model);
+            }
           } catch {
             // Best effort
           }
@@ -135,27 +206,47 @@ export function createAgentRoutes(authMiddleware, csrfProtection) {
   });
 
   /**
-   * POST /clear — clear conversation history for the user's session
+   * POST /clear — clear conversation history for a session
+   *
+   * Body: { sessionId }
    */
   agent.post("/clear", authMiddleware, csrfProtection, async (c) => {
     const userID = c.get("userID");
-    await clearSession(userID);
+    const body = await c.req.json();
+    const { sessionId } = body;
+
+    if (!sessionId) return c.json({ error: "sessionId required" }, 400);
+
+    // Verify ownership
+    const session = await getSession(sessionId, userID);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+
+    await clearSession(sessionId);
     return c.json({ ok: true });
   });
 
   /**
-   * POST /model — set the Ollama model for the user's session
+   * POST /model — set the Ollama model for a session
+   *
+   * Body: { sessionId, model }
    */
   agent.post("/model", authMiddleware, csrfProtection, async (c) => {
     const userID = c.get("userID");
     const body = await c.req.json();
-    const { model } = body;
+    const { model, sessionId } = body;
 
     if (!model || typeof model !== "string") {
       return c.json({ error: "Model name is required" }, 400);
     }
 
-    await setModel(userID, model);
+    // Resolve session — use provided or most recent
+    const session = sessionId
+      ? await getSession(sessionId, userID)
+      : await getOrCreateDefaultSession(userID);
+
+    if (!session) return c.json({ error: "Session not found" }, 404);
+
+    await setModel(session.id, model);
     return c.json({ ok: true, model });
   });
 

@@ -1,5 +1,20 @@
 ## CHANGELOG
 
+- switch to mlx-lm?
+- merge into dottie-os
+
+
+0.4.0
+
+  Add multi-session conversation support
+  Add ChatSidebar with conversation history list
+  Add custom Layout override for sidebar swap
+  Add session CRUD API routes (list, create, delete)
+  Add sessionId to all agent API routes
+  Add auto-title from first user message
+  Add legacy session migration on startup
+  Update ChatView for URL-based session routing
+
 0.3.0
 
   Add markdown rendering

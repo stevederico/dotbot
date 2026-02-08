@@ -20,7 +20,7 @@ import { promisify } from 'node:util';
 import { MongoClient } from "mongodb";
 import { initMemory } from "./agent/memory.js";
 import { initCron, stopCron } from "./agent/cron.js";
-import { initSessions, addMessage } from "./agent/session.js";
+import { initSessions, addMessage, getSessionInternal } from "./agent/session.js";
 import { agentLoop } from "./agent/agent.js";
 import { tools as agentTools } from "./agent/tools.js";
 import { createAgentRoutes } from "./agent/routes.js";
@@ -359,7 +359,11 @@ try {
     await addMessage(sessionId, { role: "user", content: `[Heartbeat] ${task.prompt}` });
     // Run the agent loop for this task (fire-and-forget, results saved to session)
     try {
-      const session = await import("./agent/session.js").then(m => m.getSession(sessionId));
+      const session = await getSessionInternal(sessionId);
+      if (!session) {
+        console.error("[cron] session not found:", sessionId);
+        return;
+      }
       for await (const event of agentLoop({ model: session.model, messages: session.messages, tools: agentTools })) {
         // Cron tasks don't stream to a client — just run to completion
       }
