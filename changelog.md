@@ -1,5 +1,13 @@
 ## CHANGELOG
 
+0.3.0
+
+  Add markdown rendering
+  Add session persistence
+  Add history API route
+  Remove usage limit
+  Update AI response layout
+
 0.2.1
 
   Add tool parameter badges

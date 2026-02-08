@@ -1,8 +1,8 @@
 import Header from '@stevederico/skateboard-ui/Header';
-import UpgradeSheet from '@stevederico/skateboard-ui/UpgradeSheet';
 import DynamicIcon from '@stevederico/skateboard-ui/DynamicIcon';
 import { useState, useEffect, useRef, useCallback } from "react";
-import { getRemainingUsage, trackUsage, showUpgradeSheet, getBackendURL, getCSRFToken, apiRequest } from '@stevederico/skateboard-ui/Utilities';
+import Markdown from "react-markdown";
+import { getBackendURL, getCSRFToken, apiRequest } from '@stevederico/skateboard-ui/Utilities';
 import { getState } from '@stevederico/skateboard-ui/Context';
 import { Input } from '@stevederico/skateboard-ui/shadcn/ui/input';
 import { Button } from '@stevederico/skateboard-ui/shadcn/ui/button';
@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
  * - Tool call display inline (running/done/error states)
  * - Stop button during streaming (AbortController)
  * - Clear chat button
- * - Usage tracking per message for non-subscribers
+ * - No usage limits — unlimited messages
  * - Auto-scroll to latest message
  *
  * @component
@@ -38,13 +38,10 @@ export default function ChatView() {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [usageInfo, setUsageInfo] = useState({ remaining: -1, isSubscriber: true });
   const [isLoading, setIsLoading] = useState(true);
   const [ollamaStatus, setOllamaStatus] = useState({ running: false, models: [], currentModel: "" });
   const [selectedModel, setSelectedModel] = useState("");
 
-  const isUserSubscriber = usageInfo.isSubscriber;
-  const upgradeSheetRef = useRef();
   const messagesEndRef = useRef(null);
   const abortControllerRef = useRef(null);
 
@@ -56,7 +53,7 @@ export default function ChatView() {
     scrollToBottom();
   }, [messages, isStreaming]);
 
-  // Fetch Ollama status and models on mount
+  // Fetch Ollama status, models, and conversation history on mount
   useEffect(() => {
     const fetchStatus = async () => {
       try {
@@ -68,20 +65,23 @@ export default function ChatView() {
       }
     };
 
-    const updateUsage = async () => {
+    const fetchHistory = async () => {
       try {
-        const usage = await getRemainingUsage('messages');
-        setUsageInfo(usage);
-      } catch (error) {
-        console.error('Error updating usage:', error);
-      } finally {
-        setIsLoading(false);
+        const data = await apiRequest("/agent/history");
+        if (data.messages?.length) {
+          setMessages(data.messages.map((m) => ({
+            id: crypto.randomUUID(),
+            role: m.role,
+            content: m.content,
+          })));
+        }
+      } catch (err) {
+        console.error("Failed to fetch chat history:", err);
       }
     };
 
     if (state.user) {
-      fetchStatus();
-      updateUsage();
+      Promise.all([fetchStatus(), fetchHistory()]).finally(() => setIsLoading(false));
     } else {
       setIsLoading(false);
     }
@@ -131,18 +131,13 @@ export default function ChatView() {
    * Send a message and stream the agent response via SSE
    *
    * Uses fetch + ReadableStream to parse SSE events from POST endpoint.
-   * Tracks usage for non-subscribers. Displays tool calls inline.
+   * Displays tool calls inline.
    *
    * @async
    */
   const handleSend = async () => {
     if (isLoading || isStreaming) return;
     if (!newMessage.trim()) return;
-
-    if (!usageInfo.isSubscriber && usageInfo.remaining <= 0) {
-      showUpgradeSheet(upgradeSheetRef);
-      return;
-    }
 
     const userMsg = {
       id: crypto.randomUUID(),
@@ -153,10 +148,6 @@ export default function ChatView() {
     setMessages(prev => [...prev, userMsg]);
     setNewMessage("");
     setIsStreaming(true);
-
-    // Track usage
-    const updatedUsage = await trackUsage('messages');
-    setUsageInfo(updatedUsage);
 
     // Create abort controller for stop button
     const controller = new AbortController();
@@ -358,44 +349,38 @@ export default function ChatView() {
 
         {messages.map(msg => (
           <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-2xl ${msg.role === 'user' ? 'items-end' : 'items-start'} flex flex-col`}>
-              {/* Tool calls (shown above assistant text) */}
-              {msg.toolCalls?.length > 0 && (
-                <div className="space-y-1 mb-2">
-                  {msg.toolCalls.map((tc, i) => (
-                    <ToolCallBadge key={`${tc.name}-${i}`} toolCall={tc} />
-                  ))}
-                </div>
-              )}
-
-              {msg.content && (
-                <Card className={`py-0 gap-0 shadow-none ring-0 ${
-                  msg.role === 'user'
-                    ? 'bg-app text-white rounded-br-sm'
-                    : msg.isError
-                      ? 'bg-destructive/10 border-destructive/20 rounded-bl-sm'
-                      : 'bg-accent rounded-bl-sm'
-                }`}>
+            {msg.role === 'user' ? (
+              <div className="max-w-2xl">
+                <Card className="py-0 gap-0 shadow-none ring-0 bg-accent rounded-br-sm">
                   <CardContent className="px-4 py-2.5">
                     <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                   </CardContent>
                 </Card>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="w-full flex flex-col">
+                {msg.toolCalls?.length > 0 && (
+                  <div className="space-y-1 mb-2">
+                    {msg.toolCalls.map((tc, i) => (
+                      <ToolCallBadge key={`${tc.name}-${i}`} toolCall={tc} />
+                    ))}
+                  </div>
+                )}
+                {msg.content && (
+                  <div className={`text-sm leading-relaxed [&_p]:mb-3 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded [&_pre]:overflow-x-auto [&_pre]:text-xs [&_pre]:my-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-bold [&_h2]:mb-2 [&_h3]:font-bold [&_h3]:mb-1 [&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:my-2 [&_a]:text-app [&_a]:underline [&_hr]:my-3 [&_hr]:border-muted ${msg.isError ? 'text-destructive' : ''}`}>
+                    <Markdown>{msg.content}</Markdown>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ))}
 
-        {isStreaming && messages[messages.length - 1]?.content === "" && (
-          <div className="flex justify-start">
-            <Card className="py-0 gap-0 shadow-none ring-0 bg-accent rounded-bl-sm">
-              <CardContent className="px-4 py-2.5">
-                <div className="flex space-x-1.5">
-                  <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce"></div>
-                  <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
-                  <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
-                </div>
-              </CardContent>
-            </Card>
+        {isStreaming && messages[messages.length - 1]?.content === "" && !messages[messages.length - 1]?.toolCalls?.length && (
+          <div className="flex space-x-1.5 py-1">
+            <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce"></div>
+            <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
+            <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -438,10 +423,6 @@ export default function ChatView() {
         </div>
       </div>
 
-      <UpgradeSheet
-        ref={upgradeSheetRef}
-        userEmail={state.user?.email}
-      />
     </div>
   );
 }

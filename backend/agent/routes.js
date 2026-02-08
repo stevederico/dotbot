@@ -41,6 +41,20 @@ export function createAgentRoutes(authMiddleware, csrfProtection) {
   });
 
   /**
+   * GET /history — return conversation messages for the current session
+   */
+  agent.get("/history", authMiddleware, async (c) => {
+    const userID = c.get("userID");
+    try {
+      const session = await getSession(userID);
+      const messages = session.messages.filter((m) => m.role !== "system");
+      return c.json({ messages });
+    } catch {
+      return c.json({ messages: [] });
+    }
+  });
+
+  /**
    * GET /tools — list registered tools (names + descriptions)
    */
   agent.get("/tools", authMiddleware, async (c) => {
