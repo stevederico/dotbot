@@ -1,0 +1,8 @@
+{
+  "staticDir": "../dist",
+  "database": {
+    "db": "dotbot",
+    "dbType": "mongodb",
+    "connectionString": "${MONGODB_URL}"
+  }
+}
