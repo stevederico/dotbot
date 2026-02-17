@@ -1,4 +1,4 @@
-0.2.0
+0.7.0
 
   Add SQLite session store
   Make SQLite default
