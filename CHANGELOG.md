@@ -1,3 +1,7 @@
+0.9.1
+
+  Remove SQLiteSessionStore exports
+
 0.9.0
 
   **BREAKING:** All SessionStore implementations now store messages in standard format only
