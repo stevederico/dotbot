@@ -37,6 +37,7 @@ npm install file:/path/to/dotbot
 ├── core/
 │   ├── agent.js          # Agent loop
 │   ├── compaction.js     # Message compaction
+│   ├── normalize.js      # Message normalization
 │   └── failover.js       # Provider failover
 ├── storage/
 │   ├── SessionStore.js   # Session interface
@@ -521,6 +522,157 @@ Abstract interface for scheduled task storage. Implementations must provide:
 - `trigger_list(enabled, eventType)` - List all triggers
 - `trigger_toggle(trigger_id, enabled)` - Enable/disable trigger
 - `trigger_delete(trigger_id)` - Delete trigger permanently
+
+## Message Normalization
+
+The library provides provider-agnostic message normalization to handle differences between Anthropic (content block arrays) and OpenAI (string content + tool_calls) formats.
+
+### `normalizeMessages(messages)`
+
+Convert provider-specific messages to a unified standard format.
+
+**Input:** Raw messages from any provider (Anthropic, OpenAI, xAI, Ollama)
+
+**Output:** Standardized message array
+
+```javascript
+import { normalizeMessages } from '@dottie/agent/core/normalize';
+
+// Provider-specific format (Anthropic)
+const rawMessages = [
+  { role: 'user', content: 'Generate an image of a sunset' },
+  {
+    role: 'assistant',
+    content: [
+      { type: 'text', text: 'I\'ll generate that for you.' },
+      { type: 'tool_use', id: 'call_123', name: 'image_generate', input: { prompt: 'sunset' } }
+    ]
+  },
+  {
+    role: 'user',
+    content: [{ type: 'tool_result', tool_use_id: 'call_123', content: '{"type":"image","url":"https://..."}' }]
+  },
+  { role: 'assistant', content: [{ type: 'text', text: 'Here\'s your sunset image!' }] }
+];
+
+// Normalize to standard format
+const normalized = normalizeMessages(rawMessages);
+// [
+//   { role: 'user', content: 'Generate an image of a sunset' },
+//   {
+//     role: 'assistant',
+//     content: 'Here\'s your sunset image!',
+//     toolCalls: [{
+//       id: 'call_123',
+//       name: 'image_generate',
+//       input: { prompt: 'sunset' },
+//       result: '{"type":"image","url":"https://..."}',
+//       status: 'done'
+//     }],
+//     images: [{ url: 'https://...', prompt: 'sunset' }]
+//   }
+// ]
+```
+
+### `toStandardFormat(messages)`
+
+Alias for `normalizeMessages()` with explicit naming.
+
+### `toProviderFormat(messages, targetFormat)`
+
+Convert standard format messages back to provider-specific format.
+
+**Parameters:**
+- `messages` - Array of normalized messages
+- `targetFormat` - `"anthropic"` or `"openai"`
+
+**Returns:** Messages in provider-specific format
+
+```javascript
+import { toProviderFormat } from '@dottie/agent/core/normalize';
+
+const standardMessages = [
+  { role: 'user', content: 'Hello' },
+  {
+    role: 'assistant',
+    content: 'Hi! Let me search for that.',
+    toolCalls: [{ id: 'call_1', name: 'web_search', input: { query: 'hello' }, result: 'Results...' }]
+  }
+];
+
+// Convert to Anthropic format
+const anthropic = toProviderFormat(standardMessages, 'anthropic');
+// [
+//   { role: 'user', content: 'Hello' },
+//   {
+//     role: 'assistant',
+//     content: [
+//       { type: 'text', text: 'Hi! Let me search for that.' },
+//       { type: 'tool_use', id: 'call_1', name: 'web_search', input: { query: 'hello' } }
+//     ]
+//   },
+//   { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'call_1', content: 'Results...' }] }
+// ]
+
+// Convert to OpenAI format
+const openai = toProviderFormat(standardMessages, 'openai');
+// [
+//   { role: 'user', content: 'Hello' },
+//   {
+//     role: 'assistant',
+//     content: 'Hi! Let me search for that.',
+//     tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'web_search', arguments: '{"query":"hello"}' } }]
+//   },
+//   { role: 'tool', tool_call_id: 'call_1', content: 'Results...' }
+// ]
+```
+
+### Standard Message Schema
+
+**User message:**
+```javascript
+{
+  role: "user",
+  content: string,
+  _ts?: number  // Optional timestamp
+}
+```
+
+**Assistant message:**
+```javascript
+{
+  role: "assistant",
+  content: string,
+  toolCalls?: [{
+    id: string,
+    name: string,
+    input: object,
+    result?: string,
+    status: "pending" | "done" | "error"
+  }],
+  thinking?: string,     // Extended thinking (Claude Sonnet 4+)
+  images?: [{            // Generated images
+    url: string,
+    prompt: string
+  }],
+  _ts?: number
+}
+```
+
+**System message:**
+```javascript
+{
+  role: "system",
+  content: string
+}
+```
+
+### Benefits
+
+- **Provider portability** - Switch between Anthropic/OpenAI/xAI without reformatting stored history
+- **Simplified storage** - Store messages in one format, not multiple provider-specific schemas
+- **Tool call consolidation** - Automatically merges assistant + tool_result messages into unified toolCalls array
+- **Image extraction** - Parses image generation results and extracts URLs for frontend display
 
 ## Goals & Triggers
 
