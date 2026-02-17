@@ -35,7 +35,8 @@ npm install file:/path/to/dotbot
 @dottie/agent/
 ├── index.js              # Main exports
 ├── core/
-│   ├── agent.js          # Agent loop (writes standard format natively)
+│   ├── agent.js          # Agent loop (emits standardized events)
+│   ├── events.js         # SSE event schemas and validation
 │   ├── compaction.js     # Message compaction (standard format)
 │   ├── normalize.js      # Message normalization
 │   └── failover.js       # Provider failover
@@ -675,6 +676,74 @@ const openai = toProviderFormat(standardMessages, 'openai');
 - **Simplified storage** - Store messages in one format, not multiple provider-specific schemas
 - **Tool call consolidation** - Automatically merges assistant + tool_result messages into unified toolCalls array
 - **Image extraction** - Parses image generation results and extracts URLs for frontend display
+
+## SSE Event Schema
+
+**All agents emit standardized SSE events regardless of provider.**
+
+The agent loop emits 10 event types during execution:
+
+### Text & Thinking Events
+
+| Event | Schema | Description |
+|---|---|---|
+| `text_delta` | `{ type: "text_delta", text: string }` | Incremental text from model |
+| `thinking` | `{ type: "thinking", text: string, hasNativeThinking: boolean }` | Model reasoning (always present, may be empty for providers without native thinking) |
+
+### Tool Execution Events
+
+| Event | Schema | Description |
+|---|---|---|
+| `tool_start` | `{ type: "tool_start", name: string, input: Object }` | Tool execution beginning |
+| `tool_result` | `{ type: "tool_result", name: string, input: Object, result: string }` | Tool completed successfully |
+| `tool_error` | `{ type: "tool_error", name: string, error: string }` | Tool execution failed |
+
+### Loop Control Events
+
+| Event | Schema | Description |
+|---|---|---|
+| `done` | `{ type: "done", content: string }` | Agent loop completed |
+| `max_iterations` | `{ type: "max_iterations", message: string }` | Iteration limit reached |
+| `error` | `{ type: "error", error: string }` | Fatal error occurred |
+
+### Metadata Events
+
+| Event | Schema | Description |
+|---|---|---|
+| `stats` | `{ type: "stats", model: string, inputTokens: number, outputTokens: number }` | Token usage (standardized field names) |
+| `followup` | `{ type: "followup", text: string }` | Suggested followup question |
+
+### Provider Normalization
+
+- **Thinking events:** Anthropic sends native thinking blocks, OpenAI/xAI send reasoning content, Ollama sends nothing → all normalized to `{ type: "thinking", text: string, hasNativeThinking: boolean }`
+- **Stats events:** Anthropic uses `input_tokens`/`output_tokens`, OpenAI uses `prompt_tokens`/`completion_tokens` → normalized to `inputTokens`/`outputTokens`
+- **Event validation:** All events validated against schema before emission
+
+### Example Consumption
+
+```javascript
+for await (const event of agent.chat({ ... })) {
+  switch (event.type) {
+    case 'text_delta':
+      process.stdout.write(event.text);
+      break;
+    case 'thinking':
+      if (event.hasNativeThinking) {
+        console.log(`[THINKING] ${event.text}`);
+      }
+      break;
+    case 'tool_start':
+      console.log(`[TOOL] ${event.name}(${JSON.stringify(event.input)})`);
+      break;
+    case 'stats':
+      console.log(`[STATS] ${event.inputTokens} → ${event.outputTokens} tokens`);
+      break;
+    case 'done':
+      console.log(`\n[DONE] ${event.content}`);
+      break;
+  }
+}
+```
 
 ## Storage Format
 
