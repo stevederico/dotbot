@@ -8,7 +8,7 @@ Framework-agnostic AI agent system with tool execution, session management, and 
 ## Features
 
 - **Framework-agnostic** - Works with any Node.js web framework (Hono, Express, Fastify, Deno)
-- **Database-agnostic** - SessionStore interface supports any backend (MongoDB, PostgreSQL, in-memory, etc.)
+- **Database-agnostic** - SessionStore interface supports any backend (MongoDB, SQLite, PostgreSQL, in-memory, etc.)
 - **Provider-agnostic** - Runtime-injected API keys work with any provider (Anthropic, OpenAI, xAI, Ollama)
 - **Tool system** - 45 built-in tools + extensible registry for custom tools
 - **Session management** - Multi-session support with conversation history
@@ -40,10 +40,11 @@ npm install file:/path/to/dotbot
 │   └── failover.js       # Provider failover
 ├── storage/
 │   ├── SessionStore.js   # Session interface
+│   ├── SQLiteAdapter.js  # SQLite session adapter (default)
+│   ├── MemoryStore.js    # In-memory session adapter
 │   ├── CronStore.js      # Cron interface
 │   ├── GoalStore.js      # Goal interface
 │   ├── TriggerStore.js   # Trigger interface
-│   ├── MemoryStore.js    # Memory interface
 │   └── Mongo*.js         # MongoDB adapters
 ├── tools/                # 41 built-in tools
 │   ├── memory.js
@@ -70,6 +71,53 @@ import { agentLoop } from '@dottie/agent/core/agent.js';
 ```
 
 ## Quick Start
+
+```javascript
+import {
+  createAgent,
+  SQLiteSessionStore,
+  coreTools
+} from '@dottie/agent';
+
+// Initialize SQLite session store (zero dependencies, Node.js 22.5+)
+const sessionStore = new SQLiteSessionStore();
+await sessionStore.init('./sessions.db', {
+  prefsFetcher: async (userId) => ({ agentName: 'Dottie', agentPersonality: '' }),
+});
+
+// Create agent
+const agent = createAgent({
+  sessionStore,
+  providers: {
+    anthropic: { apiKey: process.env.ANTHROPIC_API_KEY },
+    openai: { apiKey: process.env.OPENAI_API_KEY },
+    xai: { apiKey: process.env.XAI_API_KEY },
+    ollama: { baseUrl: 'http://localhost:11434' },
+  },
+  tools: coreTools,
+  screenshotUrlPattern: (filename) => `/api/screenshots/${filename}`,
+});
+
+// Create session
+const session = await agent.createSession('user123', 'claude-sonnet-4-5', 'anthropic');
+
+// Chat with agent (SSE stream)
+for await (const event of agent.chat({
+  sessionId: session.id,
+  message: 'What is 2+2?',
+  provider: 'anthropic',
+  model: 'claude-sonnet-4-5',
+  context: {
+    userID: 'user123',
+  },
+})) {
+  console.log(event);
+  // { type: 'text_delta', delta: '2+2 equals 4.' }
+  // { type: 'done', messages: [...] }
+}
+```
+
+### Alternative: MongoDB for Scalable Deployments
 
 ```javascript
 import {
@@ -122,28 +170,7 @@ const agent = createAgent({
     ollama: { baseUrl: 'http://localhost:11434' },
   },
   tools: coreTools,
-  screenshotUrlPattern: (filename) => `/api/screenshots/${filename}`,
 });
-
-// Create session
-const session = await agent.createSession('user123', 'gpt-4o', 'openai');
-
-// Chat with agent (SSE stream)
-for await (const event of agent.chat({
-  sessionId: session.id,
-  message: 'What is 2+2?',
-  provider: 'openai',
-  model: 'gpt-4o',
-  context: {
-    userID: 'user123',
-    databaseManager: myDatabaseManager,
-    dbConfig: { dbType: 'mongodb', db: 'myapp', connectionString: process.env.MONGODB_URL },
-  },
-})) {
-  console.log(event);
-  // { type: 'text_delta', delta: '2+2 equals 4.' }
-  // { type: 'done', messages: [...] }
-}
 ```
 
 ## API Reference
@@ -363,6 +390,7 @@ class SessionStore {
 
 **Included implementations:**
 - `MongoSessionStore` - MongoDB backend with full-text search
+- `SQLiteSessionStore` - SQLite backend using Node.js 22.5+ built-in sqlite module (zero dependencies)
 - `MemorySessionStore` - In-memory Map-based storage (for testing/development)
 
 #### Session Object Format
@@ -1212,7 +1240,12 @@ class PostgresSessionStore extends SessionStore {
 import { MemorySessionStore } from '@dottie/agent';
 const sessionStore = new MemorySessionStore();
 
-// Production: Database-backed store (persistent)
+// Production: SQLite (single-file, zero dependencies, Node.js 22.5+)
+import { SQLiteSessionStore } from '@dottie/agent';
+const sessionStore = new SQLiteSessionStore();
+await sessionStore.init('./sessions.db');
+
+// Production: MongoDB (scalable, full-text search)
 import { MongoSessionStore } from '@dottie/agent';
 const sessionStore = new MongoSessionStore();
 await sessionStore.init(mongoDb);
