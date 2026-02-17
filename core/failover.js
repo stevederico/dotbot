@@ -142,6 +142,10 @@ async function fetchWithFailover({ provider, buildRequest, signal, logger }) {
 
         // Non-retryable — throw immediately, no failover
         if (!RETRYABLE_STATUSES.has(lastStatus)) {
+          console.error(`[failover] ${targetProvider.name} returned ${lastStatus}`);
+          console.error(`[failover] Error body:`, lastBody);
+          console.error(`[failover] Request URL:`, url);
+          console.error(`[failover] Request body:`, body.slice(0, 500));
           throw new FailoverError(
             `${targetProvider.name} returned ${lastStatus}: ${lastBody}`,
             [{ provider: targetProvider.id, status: lastStatus, body: lastBody }]
