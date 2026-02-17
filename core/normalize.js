@@ -276,7 +276,7 @@ export function toProviderFormat(messages, targetFormat) {
         // OpenAI: string content + tool_calls array
         const assistantMsg = {
           role: 'assistant',
-          content: msg.content || null,
+          content: msg.content || '',
           ...(msg._ts && { _ts: msg._ts })
         };
 

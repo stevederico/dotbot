@@ -1,3 +1,8 @@
+0.9.3
+
+  Fix OpenAI content
+  Add failover logging
+
 0.9.2
 
   Standardize SSE events across all providers
