@@ -10,7 +10,7 @@ Framework-agnostic AI agent system with tool execution, session management, and 
 - **Framework-agnostic** - Works with any Node.js web framework (Hono, Express, Fastify, Deno)
 - **Database-agnostic** - SessionStore interface supports any backend (MongoDB, PostgreSQL, in-memory, etc.)
 - **Provider-agnostic** - Runtime-injected API keys work with any provider (Anthropic, OpenAI, xAI, Ollama)
-- **Tool system** - 41 built-in tools + extensible registry for custom tools
+- **Tool system** - 45 built-in tools + extensible registry for custom tools
 - **Session management** - Multi-session support with conversation history
 - **Auto-compaction** - Intelligent message summarization when context limits approach
 - **Scheduled tasks** - CronStore interface for recurring agent actions
@@ -169,7 +169,7 @@ Create an agent instance with configurable stores, providers, and tools.
   // Optional: System prompt template function
   systemPrompt?: (agentName: string, agentPersonality: string, timestamp: string) => string,
 
-  // Optional: Tool array (defaults to coreTools - 41 tools)
+  // Optional: Tool array (defaults to coreTools - 45 tools)
   tools?: Tool[],
 
   // Optional: Scheduled task store (for recurring tasks)
@@ -425,12 +425,15 @@ Abstract interface for scheduled task storage. Implementations must provide:
 
 ### Core Tools
 
-41 built-in tools included by default:
+45 built-in tools included by default:
 
-**Memory (3 tools):**
-- `memory_save(key, value)` - Save to long-term memory
+**Memory (6 tools):**
+- `memory_save(content, tags)` - Save to long-term memory
 - `memory_search(query)` - Search memory by query
 - `memory_delete(key)` - Delete memory entry
+- `memory_list()` - List all memories
+- `memory_read(key)` - Read a specific memory by key
+- `memory_update(key, content, tags)` - Update or create a memory with a specific key
 
 **Web (3 tools):**
 - `web_search(query)` - Search web (Grok Responses API or DuckDuckGo fallback)
@@ -1170,7 +1173,7 @@ class PostgresSessionStore extends SessionStore {
 │                                                         │
 │  ┌─────────────────────────────────────────────────┐   │
 │  │  Tool Registry                                  │   │
-│  │  • 29 core tools (memory, web, files, etc.)    │   │
+│  │  • 45 core tools (memory, web, files, etc.)    │   │
 │  │  • Custom tool registration                     │   │
 │  │  • Dynamic execution context                    │   │
 │  └─────────────────────────────────────────────────┘   │
