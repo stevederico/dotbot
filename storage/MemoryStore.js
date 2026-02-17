@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { SessionStore } from './SessionStore.js';
 import { defaultSystemPrompt } from './MongoAdapter.js';
+import { toStandardFormat } from '../core/normalize.js';
 
 /**
  * In-memory SessionStore implementation for testing
@@ -79,11 +80,20 @@ export class MemorySessionStore extends SessionStore {
     return session;
   }
 
+  /**
+   * Save session with normalized messages.
+   * Converts any provider-specific message formats to standard format before persisting.
+   *
+   * @param {string} sessionId - Session UUID
+   * @param {Array} messages - Messages (provider-specific or standard format)
+   * @param {string} model - Model identifier
+   * @param {string} [provider] - Provider name
+   */
   async saveSession(sessionId, messages, model, provider) {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session ${sessionId} not found`);
 
-    session.messages = messages;
+    session.messages = toStandardFormat(messages);
     session.model = model;
     session.updatedAt = new Date();
     if (provider) session.provider = provider;
@@ -97,11 +107,19 @@ export class MemorySessionStore extends SessionStore {
     }
   }
 
+  /**
+   * Add a message to a session, normalizing to standard format before saving.
+   *
+   * @param {string} sessionId - Session UUID
+   * @param {Object} message - Message object (any provider format)
+   * @returns {Promise<Object>} Updated session
+   */
   async addMessage(sessionId, message) {
     const session = await this.getSessionInternal(sessionId);
     if (!session) throw new Error(`Session ${sessionId} not found`);
     if (!message._ts) message._ts = Date.now();
-    session.messages.push(message);
+    const normalized = toStandardFormat([message]);
+    session.messages.push(...normalized);
     await this.saveSession(sessionId, session.messages, session.model);
     return session;
   }

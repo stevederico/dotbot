@@ -1,6 +1,6 @@
 {
   "name": "@dottie/agent",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Framework-agnostic AI agent system with tool execution, session management, and scheduled tasks",
   "type": "module",
   "main": "index.js",

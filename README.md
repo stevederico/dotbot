@@ -35,8 +35,8 @@ npm install file:/path/to/dotbot
 @dottie/agent/
 ├── index.js              # Main exports
 ├── core/
-│   ├── agent.js          # Agent loop
-│   ├── compaction.js     # Message compaction
+│   ├── agent.js          # Agent loop (writes standard format natively)
+│   ├── compaction.js     # Message compaction (standard format)
 │   ├── normalize.js      # Message normalization
 │   └── failover.js       # Provider failover
 ├── storage/
@@ -394,6 +394,8 @@ class SessionStore {
 - `SQLiteSessionStore` - SQLite backend using Node.js 22.5+ built-in sqlite module (zero dependencies)
 - `MemorySessionStore` - In-memory Map-based storage (for testing/development)
 
+All implementations store messages in **standard format** (see [Storage Format](#storage-format)). Legacy provider-specific messages are normalized on read and migrated on next save.
+
 #### Session Object Format
 
 ```typescript
@@ -673,6 +675,58 @@ const openai = toProviderFormat(standardMessages, 'openai');
 - **Simplified storage** - Store messages in one format, not multiple provider-specific schemas
 - **Tool call consolidation** - Automatically merges assistant + tool_result messages into unified toolCalls array
 - **Image extraction** - Parses image generation results and extracts URLs for frontend display
+
+## Storage Format
+
+As of v0.9.0, all SessionStore implementations store messages exclusively in **standard format**. The agent loop writes standard format natively, and provider-specific wire formats (Anthropic content blocks, OpenAI tool_calls) are produced just-in-time via `toProviderFormat()` before each API call.
+
+### How It Works
+
+1. **Agent loop** writes assistant responses directly in standard format (`{ role, content, toolCalls, thinking, images }`)
+2. **SessionStore adapters** normalize any legacy provider-specific messages on read via `normalizeMessages()`
+3. **Migration is automatic** — legacy sessions are normalized on first read and persisted in standard format on next save
+4. **`toProviderFormat()`** converts standard messages to Anthropic or OpenAI wire format just before sending to the API
+
+### Standard Message Schema (Stored)
+
+```javascript
+// User message
+{ role: "user", content: "Hello", _ts: 1700000000000 }
+
+// Assistant message (with optional tool calls, thinking, images)
+{
+  role: "assistant",
+  content: "Here are the results.",
+  toolCalls: [{
+    id: "call_abc",
+    name: "web_search",
+    input: { query: "AI news" },
+    result: "...",
+    status: "done"
+  }],
+  thinking: "I should search for recent news...",
+  images: [{ url: "https://...", prompt: "sunset" }],
+  _ts: 1700000001000
+}
+
+// System message
+{ role: "system", content: "You are a helpful assistant." }
+```
+
+### Benefits
+
+- **Provider portability** — Switch between Anthropic, OpenAI, xAI, or Ollama without reformatting stored history
+- **Simplified storage** — One canonical format across all adapters (MongoDB, SQLite, in-memory)
+- **Tool call consolidation** — Assistant message + tool results merged into a single `toolCalls` array
+- **No dual-format maintenance** — Storage adapters no longer need to handle multiple provider schemas
+
+### Migration
+
+Existing sessions created with v0.8.0 or earlier (which may contain Anthropic content block arrays or OpenAI `tool_calls` objects) are automatically migrated:
+
+1. On read, `normalizeMessages()` detects and converts legacy formats to standard
+2. On next save, the normalized messages are persisted — no manual migration required
+3. The `normalizeMessages()` call in API routes (e.g., `/history`) is now a no-op for already-normalized data, retained for backward compatibility
 
 ## Goals & Triggers
 

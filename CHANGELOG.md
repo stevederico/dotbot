@@ -1,3 +1,14 @@
+0.9.0
+
+  **BREAKING:** All SessionStore implementations now store messages in standard format only
+  Agent loop writes standard format natively; provider-specific wire formats produced just-in-time via toProviderFormat()
+  SessionStore adapters normalize legacy messages on read and migrate them on next save
+  MemoryStore, SQLiteAdapter, and MongoAdapter all store/return standard format
+  Compaction utilities updated to operate on standard format messages
+  normalizeMessages() in /history endpoint is now a backward-compatible no-op for already-normalized data
+
+  **Migration:** Existing sessions auto-migrate on first read — no manual steps required
+
 0.8.0
 
   Add core/normalize.js - provider-agnostic message normalization

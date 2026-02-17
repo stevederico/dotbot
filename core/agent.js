@@ -1,9 +1,11 @@
 // agent/agent.js
-// Provider-agnostic agent loop. Supports OpenAI-compatible providers
-// (OpenAI, xAI, Ollama) and Anthropic via separate code paths.
+// Provider-agnostic agent loop. All conversation history is stored in a
+// standard format (see normalize.js). Provider-specific wire formats are
+// produced just-in-time inside buildAgentRequest() via toProviderFormat().
 
 import { AI_PROVIDERS } from "../utils/providers.js";
 import { fetchWithFailover, FailoverError } from "./failover.js";
+import { toProviderFormat } from "./normalize.js";
 
 const OLLAMA_BASE = "http://localhost:11434";
 
@@ -58,13 +60,19 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
 
     /**
      * Build a fetch request for a given target provider.
-     * Handles Anthropic vs OpenAI-compatible format differences.
+     * Messages are stored in standard format and converted to provider-specific
+     * wire format just-in-time here via toProviderFormat().
      * @param {Object} targetProvider - Provider config from AI_PROVIDERS.
      * @returns {{url: string, headers: Object, body: string}}
      */
     const buildAgentRequest = (targetProvider) => {
       const targetApiKey = targetProvider.envKey ? process.env[targetProvider.envKey] : null;
       const targetIsAnthropic = targetProvider.id === "anthropic";
+      const targetModel = targetProvider === provider ? model : targetProvider.defaultModel;
+
+      // JIT conversion: standard format → provider wire format
+      const targetFormat = targetIsAnthropic ? "anthropic" : "openai";
+      const wireMessages = toProviderFormat(messages, targetFormat);
 
       if (targetIsAnthropic) {
         const anthropicTools = tools.map((t) => ({
@@ -72,9 +80,8 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
           description: t.description,
           input_schema: t.parameters,
         }));
-        const systemMsg = messages.find((m) => m.role === "system");
-        const chatMessages = messages.filter((m) => m.role !== "system");
-        const targetModel = targetProvider === provider ? model : targetProvider.defaultModel;
+        const systemMsg = wireMessages.find((m) => m.role === "system");
+        const chatMessages = wireMessages.filter((m) => m.role !== "system");
         const supportsThinking = targetModel.includes('sonnet') || targetModel.includes('opus');
         const requestBody = {
           model: targetModel,
@@ -101,8 +108,8 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
         url: `${targetProvider.apiUrl}${targetProvider.endpoint}`,
         headers: targetProvider.headers(targetApiKey),
         body: JSON.stringify({
-          model: targetProvider === provider ? model : targetProvider.defaultModel,
-          messages,
+          model: targetModel,
+          messages: wireMessages,
           tools: toolDefs,
           stream: true,
         }),
@@ -132,14 +139,11 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
       }
     }
 
-    // Update format flag if failover switched provider families
-    const useAnthropicFormat = activeProvider.id === "anthropic";
-
-    // Stream parsing — two paths depending on provider format
+    // Stream parsing — two paths depending on provider wire format
     let fullContent = "";
     let toolCalls = [];
 
-    if (useAnthropicFormat) {
+    if (activeProvider.id === "anthropic") {
       // Anthropic SSE format: content_block_start, content_block_delta, content_block_stop, message_delta
       const result = yield* parseAnthropicStream(response, fullContent, toolCalls, signal);
       fullContent = result.fullContent;
@@ -256,97 +260,56 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
 
     // Check if the model wants to call tools
     if (toolCalls.length > 0) {
-      if (useAnthropicFormat) {
-        // Anthropic: assistant message has content blocks
-        const contentBlocks = [];
-        if (fullContent) {
-          contentBlocks.push({ type: "text", text: fullContent });
-        }
-        for (const tc of toolCalls) {
-          contentBlocks.push({
-            type: "tool_use",
+      // Standard format: single assistant message with toolCalls array.
+      // toProviderFormat() splits this into the wire format each provider expects.
+      const assistantMsg = {
+        role: "assistant",
+        content: fullContent || "",
+        toolCalls: toolCalls.map((tc) => {
+          let input = tc.function.arguments;
+          if (typeof input === "string") {
+            try { input = JSON.parse(input); } catch {}
+          }
+          return {
             id: tc.id,
             name: tc.function.name,
-            input: tc.function.arguments,
-          });
-        }
-        messages.push({ role: "assistant", content: contentBlocks, _ts: Date.now() });
-      } else {
-        // OpenAI-compatible: tool_calls array on assistant message
-        messages.push({
-          role: "assistant",
-          content: fullContent || null,
-          _ts: Date.now(),
-          tool_calls: toolCalls.map((tc) => ({
-            id: tc.id,
-            type: "function",
-            function: {
-              name: tc.function.name,
-              arguments: typeof tc.function.arguments === "string"
-                ? tc.function.arguments
-                : JSON.stringify(tc.function.arguments),
-            },
-          })),
-        });
-      }
+            input,
+            status: "pending",
+          };
+        }),
+        _ts: Date.now(),
+      };
+      messages.push(assistantMsg);
 
-      // Execute each tool
-      for (const call of toolCalls) {
-        const toolName = call.function.name;
-        let toolInput = call.function.arguments;
+      // Execute each tool and update the standard-format toolCalls in place.
+      // No separate tool-result messages — results are stored on the toolCall object.
+      // toProviderFormat() will expand these into the wire format at request time.
+      for (let i = 0; i < assistantMsg.toolCalls.length; i++) {
+        const tc = assistantMsg.toolCalls[i];
+        const tool = tools.find((t) => t.name === tc.name);
 
-        // Parse arguments if they're a JSON string
-        if (typeof toolInput === "string") {
-          try {
-            toolInput = JSON.parse(toolInput);
-          } catch {
-            // Keep as string if not valid JSON
-          }
-        }
-
-        const tool = tools.find((t) => t.name === toolName);
-
-        yield { type: "tool_start", name: toolName, input: toolInput };
+        yield { type: "tool_start", name: tc.name, input: tc.input };
 
         if (!tool) {
-          const errorResult = `Tool "${toolName}" not found`;
-          yield { type: "tool_error", name: toolName, error: errorResult };
-          if (useAnthropicFormat) {
-            messages.push({
-              role: "user",
-              content: [{ type: "tool_result", tool_use_id: call.id, content: errorResult }],
-            });
-          } else {
-            messages.push({ role: "tool", tool_call_id: call.id, content: errorResult });
-          }
+          const errorResult = `Tool "${tc.name}" not found`;
+          yield { type: "tool_error", name: tc.name, error: errorResult };
+          tc.result = errorResult;
+          tc.status = "error";
           continue;
         }
 
         try {
-          const result = await tool.execute(toolInput, signal, context);
+          const result = await tool.execute(tc.input, signal, context);
           const resultStr = typeof result === "string" ? result : JSON.stringify(result);
 
-          yield { type: "tool_result", name: toolName, input: toolInput, result: resultStr };
-
-          if (useAnthropicFormat) {
-            messages.push({
-              role: "user",
-              content: [{ type: "tool_result", tool_use_id: call.id, content: resultStr }],
-            });
-          } else {
-            messages.push({ role: "tool", tool_call_id: call.id, content: resultStr });
-          }
+          yield { type: "tool_result", name: tc.name, input: tc.input, result: resultStr };
+          tc.result = resultStr;
+          tc.status = "done";
         } catch (err) {
           const errorResult = `Tool error: ${err.message}`;
-          yield { type: "tool_error", name: toolName, error: errorResult };
-          if (useAnthropicFormat) {
-            messages.push({
-              role: "user",
-              content: [{ type: "tool_result", tool_use_id: call.id, content: errorResult, is_error: true }],
-            });
-          } else {
-            messages.push({ role: "tool", tool_call_id: call.id, content: errorResult });
-          }
+          yield { type: "tool_error", name: tc.name, error: errorResult };
+          tc.result = errorResult;
+          tc.status = "error";
         }
       }
 
@@ -361,12 +324,8 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
         fullContent = fullContent.replace(/<followup>[\s\S]*?<\/followup>/, '').trim();
       }
 
-      // Persist the cleaned text response so saveSession() includes it
-      if (useAnthropicFormat) {
-        messages.push({ role: "assistant", content: [{ type: "text", text: fullContent }], _ts: Date.now() });
-      } else {
-        messages.push({ role: "assistant", content: fullContent, _ts: Date.now() });
-      }
+      // Standard format: plain string content, no provider-specific wrapping
+      messages.push({ role: "assistant", content: fullContent, _ts: Date.now() });
       if (followup) {
         yield { type: "followup", text: followup };
       }

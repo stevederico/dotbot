@@ -1,8 +1,10 @@
 // core/compaction.js
 // Session auto-compaction: summarizes old messages when context nears provider limits.
 // Runs before trimMessages as an intelligent alternative to hard truncation.
+// Operates on standard-format messages (see normalize.js).
 
 import { AI_PROVIDERS } from "../utils/providers.js";
+import { toStandardFormat, toProviderFormat } from "./normalize.js";
 
 /** Max context window tokens per provider family. */
 const CONTEXT_LIMITS = {
@@ -27,12 +29,12 @@ const CHEAP_MODELS = {
 };
 
 /**
- * Estimate token count for an array of messages.
+ * Estimate token count for an array of standard-format messages.
  *
- * Uses a 4-chars-per-token heuristic. Handles both string content,
- * Anthropic content block arrays, and OpenAI tool_calls.
+ * Uses a 4-chars-per-token heuristic. Counts content, toolCalls
+ * (name + input + result), and thinking fields.
  *
- * @param {Array} messages - Conversation messages in any provider format.
+ * @param {Array} messages - Conversation messages in standard format.
  * @returns {number} Estimated token count.
  */
 export function estimateTokens(messages) {
@@ -41,28 +43,20 @@ export function estimateTokens(messages) {
   for (const msg of messages) {
     if (typeof msg.content === "string") {
       chars += msg.content.length;
-    } else if (Array.isArray(msg.content)) {
-      // Anthropic content blocks
-      for (const block of msg.content) {
-        if (block.type === "text" && block.text) {
-          chars += block.text.length;
-        } else if (block.type === "tool_use") {
-          chars += (block.name || "").length;
-          chars += JSON.stringify(block.input || {}).length;
-        } else if (block.type === "tool_result") {
-          chars += (typeof block.content === "string" ? block.content : JSON.stringify(block.content || "")).length;
-        } else if (block.type === "thinking" && block.thinking) {
-          chars += block.thinking.length;
+    }
+
+    if (msg.toolCalls) {
+      for (const tc of msg.toolCalls) {
+        chars += (tc.name || "").length;
+        chars += JSON.stringify(tc.input || {}).length;
+        if (tc.result) {
+          chars += (typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result)).length;
         }
       }
     }
 
-    // OpenAI tool_calls on assistant messages
-    if (msg.tool_calls) {
-      for (const tc of msg.tool_calls) {
-        chars += (tc.function?.name || "").length;
-        chars += (tc.function?.arguments || "").length;
-      }
+    if (msg.thinking) {
+      chars += msg.thinking.length;
     }
   }
 
@@ -72,35 +66,28 @@ export function estimateTokens(messages) {
 /**
  * Naive fallback summary when no AI provider is available.
  *
- * Extracts the first 100 characters of each user message and tool result,
- * producing a bullet-point summary.
+ * Extracts the first 100 characters of each user message, tool call names,
+ * and tool results, producing a bullet-point summary.
  *
- * @param {Array} messages - Old messages to summarize.
+ * @param {Array} messages - Standard-format messages to summarize.
  * @returns {string} Plain-text summary.
  */
 function naiveSummary(messages) {
   const lines = [];
 
   for (const msg of messages) {
-    if (msg.role === "user" && typeof msg.content === "string") {
+    if (msg.role === "user" && msg.content) {
       lines.push(`- User: ${msg.content.slice(0, 100)}`);
     } else if (msg.role === "assistant") {
-      // Extract tool results from Anthropic format
-      if (Array.isArray(msg.content)) {
-        for (const block of msg.content) {
-          if (block.type === "tool_use") {
-            lines.push(`- Tool: ${block.name}`);
+      if (msg.toolCalls) {
+        for (const tc of msg.toolCalls) {
+          lines.push(`- Tool: ${tc.name}`);
+          if (tc.result) {
+            const resultStr = typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result);
+            lines.push(`- Result: ${resultStr.slice(0, 100)}`);
           }
         }
       }
-      // Extract tool results from OpenAI format
-      if (msg.tool_calls) {
-        for (const tc of msg.tool_calls) {
-          lines.push(`- Tool: ${tc.function?.name}`);
-        }
-      }
-    } else if (msg.role === "tool" && typeof msg.content === "string") {
-      lines.push(`- Result: ${msg.content.slice(0, 100)}`);
     }
   }
 
@@ -112,38 +99,42 @@ function naiveSummary(messages) {
 /**
  * Summarize old messages using the cheapest available AI provider.
  *
- * Checks env keys in order: XAI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY.
+ * Checks provider keys in order: xAI, Anthropic, OpenAI.
  * Falls back to naiveSummary() if no provider is configured.
+ * Messages are expected in standard format; converted to provider format for the API call.
  *
- * @param {Array} oldMessages - Messages to summarize.
+ * @param {Array} oldMessages - Standard-format messages to summarize.
  * @param {Object} [options={}]
  * @param {AbortSignal} [options.signal] - Optional abort signal.
+ * @param {Object} [options.providers={}] - Provider config with API keys.
  * @returns {Promise<string>} Summary text.
  */
-async function summarizeMessages(oldMessages, { signal } = {}) {
-  // Build plain-text transcript from old messages
+async function summarizeMessages(oldMessages, { signal, providers = {} } = {}) {
+  // Build plain-text transcript from standard-format messages
   const transcript = oldMessages
     .map((msg) => {
       const role = msg.role || "unknown";
-      let text = "";
-      if (typeof msg.content === "string") {
-        text = msg.content;
-      } else if (Array.isArray(msg.content)) {
-        text = msg.content
-          .map((b) => {
-            if (b.type === "text") return b.text;
-            if (b.type === "tool_use") return `[tool: ${b.name}]`;
-            if (b.type === "tool_result") return `[result: ${typeof b.content === "string" ? b.content.slice(0, 200) : "..."}]`;
-            return "";
-          })
-          .filter(Boolean)
-          .join(" ");
+      const parts = [];
+
+      if (msg.content) {
+        parts.push(msg.content);
       }
-      return `${role}: ${text}`;
+
+      if (msg.toolCalls) {
+        for (const tc of msg.toolCalls) {
+          parts.push(`[tool: ${tc.name}]`);
+          if (tc.result) {
+            const resultStr = typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result);
+            parts.push(`[result: ${resultStr.slice(0, 200)}]`);
+          }
+        }
+      }
+
+      return `${role}: ${parts.join(" ")}`;
     })
     .join("\n");
 
-  // Find cheapest available provider from injected providers
+  // Find cheapest available provider
   const providerOrder = ["xai", "anthropic", "openai"];
 
   let selectedProvider = null;
@@ -165,38 +156,40 @@ async function summarizeMessages(oldMessages, { signal } = {}) {
   const summaryPrompt =
     "Summarize this conversation concisely. Preserve: key decisions, user facts, tool results, and any important outcomes. Omit: greetings, thinking steps, redundant tool calls. Output only the summary, no preamble.";
 
+  // Build summarization request in standard format, then convert for the provider
+  const summaryMessages = [
+    { role: "system", content: summaryPrompt },
+    { role: "user", content: transcript },
+  ];
+
+  const targetFormat = selectedProvider.id === "anthropic" ? "anthropic" : "openai";
+  const providerMessages = toProviderFormat(summaryMessages, targetFormat);
+
+  // Anthropic doesn't support system role in messages — use top-level system param
+  let requestBody;
+  if (targetFormat === "anthropic") {
+    requestBody = {
+      model: selectedModel,
+      max_tokens: 1024,
+      system: summaryPrompt,
+      messages: providerMessages.filter((m) => m.role !== "system"),
+    };
+  } else {
+    requestBody = {
+      model: selectedModel,
+      max_tokens: 1024,
+      messages: providerMessages,
+    };
+  }
+
   try {
-    const isAnthropic = selectedProvider.id === "anthropic";
-
-    let url, headers, body;
-
-    if (isAnthropic) {
-      url = `${selectedProvider.apiUrl}${selectedProvider.endpoint}`;
-      headers = selectedProvider.headers(apiKey);
-      body = JSON.stringify({
-        model: selectedModel,
-        max_tokens: 1024,
-        messages: [
-          { role: "user", content: `${summaryPrompt}\n\n---\n${transcript}` },
-        ],
-      });
-    } else {
-      url = `${selectedProvider.apiUrl}${selectedProvider.endpoint}`;
-      headers = selectedProvider.headers(apiKey);
-      body = JSON.stringify({
-        model: selectedModel,
-        max_tokens: 1024,
-        messages: [
-          { role: "system", content: summaryPrompt },
-          { role: "user", content: transcript },
-        ],
-      });
-    }
+    const url = `${selectedProvider.apiUrl}${selectedProvider.endpoint}`;
+    const headers = selectedProvider.headers(apiKey);
 
     const res = await fetch(url, {
       method: "POST",
       headers,
-      body,
+      body: JSON.stringify(requestBody),
       signal,
     });
 
@@ -252,7 +245,7 @@ export async function compactMessages(messages, { providerId = "ollama", signal,
 
   console.log(`[compaction] ${tokens} tokens (~${Math.round((tokens / limit) * 100)}% of ${providerId} limit), compacting ${old.length} old messages`);
 
-  const summary = await summarizeMessages(old, { signal });
+  const summary = await summarizeMessages(old, { signal, providers });
 
   const summaryMessage = {
     role: "user",
