@@ -66,6 +66,9 @@ export { agentLoop } from './core/agent.js';
 // Export compaction utilities
 export { compactMessages, estimateTokens } from './core/compaction.js';
 
+// Export message normalization
+export { toStandardFormat, toProviderFormat, normalizeMessages } from './core/normalize.js';
+
 /**
  * Create an agent instance with configurable stores, providers, and tools
  *
