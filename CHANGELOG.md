@@ -1,3 +1,23 @@
+0.10.0
+
+  Add init() unified initialization
+  Add core/cron_handler.js
+  Add core/trigger_handler.js
+  Add storesOnly mode for simple use cases
+  Fix createAgent provider scoping bug
+  Export createCronHandler
+  Export createTriggerHandler
+
+0.9.5
+
+  Add SQLiteCronStore
+  Add SQLiteGoalStore
+  Add SQLiteTriggerStore
+  Add SQLiteMemoryStore
+  Add cronTools
+  Refactor memory tools to use memoryStore
+  Extract cron constants to cron_constants.js
+
 0.9.4
 
   Add Cerebras provider

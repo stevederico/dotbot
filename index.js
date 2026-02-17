@@ -19,6 +19,7 @@ import {
   createBrowserTools,
   goalTools,
   triggerTools,
+  cronTools,
 } from './tools/index.js';
 
 // Export core abstractions
@@ -30,13 +31,18 @@ export {
   defaultSystemPrompt,
   CronStore,
   MongoCronStore,
+  SQLiteCronStore,
   parseInterval,
   HEARTBEAT_INTERVAL_MS,
   HEARTBEAT_PROMPT,
+  runWithConcurrency,
   GoalStore,
   MongoGoalStore,
+  SQLiteGoalStore,
   TriggerStore,
   MongoTriggerStore,
+  SQLiteTriggerStore,
+  SQLiteMemoryStore,
 } from './storage/index.js';
 
 // Export tool system
@@ -55,10 +61,12 @@ export {
   createBrowserTools,
   goalTools,
   triggerTools,
+  cronTools,
 } from './tools/index.js';
 
 // Export provider configuration
-export { AI_PROVIDERS } from './utils/providers.js';
+import { AI_PROVIDERS } from './utils/providers.js';
+export { AI_PROVIDERS };
 
 // Export agent loop (already well-abstracted)
 export { agentLoop } from './core/agent.js';
@@ -72,6 +80,13 @@ export { toStandardFormat, toProviderFormat, normalizeMessages } from './core/no
 // Export event system
 export { validateEvent, normalizeStatsEvent } from './core/events.js';
 
+// Export unified initialization
+export { init } from './core/init.js';
+
+// Export handler factories for advanced use cases
+export { createCronHandler } from './core/cron_handler.js';
+export { createTriggerHandler } from './core/trigger_handler.js';
+
 /**
  * Create an agent instance with configurable stores, providers, and tools
  *
@@ -83,6 +98,7 @@ export { validateEvent, normalizeStatsEvent } from './core/events.js';
  * @param {CronStore} [options.cronStore] - Optional cron storage backend for scheduled tasks
  * @param {GoalStore} [options.goalStore] - Optional goal storage backend for multi-step autonomous execution
  * @param {TriggerStore} [options.triggerStore] - Optional trigger storage backend for event-driven responses
+ * @param {SQLiteMemoryStore} [options.memoryStore] - Optional memory storage backend for long-term memory
  * @param {Function} [options.screenshotUrlPattern] - Screenshot URL pattern: (filename) => URL string
  * @param {Object} [options.compaction] - Compaction settings: { enabled: true, ... }
  * @returns {Object} Agent API
@@ -95,6 +111,7 @@ export function createAgent({
   cronStore = null,
   goalStore = null,
   triggerStore = null,
+  memoryStore = null,
   screenshotUrlPattern = (filename) => `/screenshots/${filename}`,
   compaction = { enabled: true },
 } = {}) {
@@ -119,6 +136,7 @@ export function createAgent({
       ...customBrowserTools,
       ...goalTools,
       ...triggerTools,
+      ...cronTools,
     ];
   }
 
@@ -147,14 +165,29 @@ export function createAgent({
         cronStore,
         goalStore,
         triggerStore,
+        memoryStore,
       };
+
+      // Resolve string provider ID to a full provider config object.
+      // agentLoop expects a provider config (with apiUrl, headers, etc.),
+      // not a string ID. Inject the API key from the providers config.
+      let resolvedProvider = provider;
+      if (typeof provider === 'string') {
+        const base = AI_PROVIDERS[provider];
+        if (base) {
+          const apiKey = providers[provider]?.apiKey;
+          resolvedProvider = apiKey
+            ? { ...base, headers: () => base.headers(apiKey) }
+            : base;
+        }
+      }
 
       // Run agent loop
       const generator = agentLoop({
         session,
         userMessage: message,
         tools: finalTools,
-        provider,
+        provider: resolvedProvider,
         model,
         signal,
         context: enhancedContext,
@@ -266,6 +299,15 @@ export function createAgent({
      */
     getTriggerStore() {
       return triggerStore;
+    },
+
+    /**
+     * Get memory store (if configured)
+     *
+     * @returns {SQLiteMemoryStore|null} Memory store instance
+     */
+    getMemoryStore() {
+      return memoryStore;
     },
   };
 }

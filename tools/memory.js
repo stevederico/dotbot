@@ -1,6 +1,6 @@
 // agent/memory.js
-// Agent memory tools that write to the shared Memory collection via databaseManager.
-// This ensures memories saved by the agent appear in the Memories App UI.
+// Agent memory tools that write to the shared Memory collection via memoryStore.
+// Uses SQLiteMemoryStore or any compatible store implementation.
 
 /**
  * Generate a slug-style key from content text.
@@ -43,31 +43,26 @@ export const memoryTools = [
       required: ["content"],
     },
     /**
-     * Save a memory via databaseManager.writeMemory so it appears in the Memories App.
+     * Save a memory via memoryStore.writeMemory.
      *
      * @param {Object} input - Tool input with content and optional tags
      * @param {AbortSignal} signal - Abort signal
-     * @param {Object} context - { userID, databaseManager, dbConfig }
+     * @param {Object} context - { userID, memoryStore }
      * @returns {Promise<string>} Confirmation message
      */
     execute: async (input, signal, context) => {
       try {
-        const { userID, databaseManager, dbConfig } = context;
+        const { userID, memoryStore } = context;
+        if (!memoryStore) {
+          return "Error: memoryStore not configured. Memory features are disabled.";
+        }
         const key = generateMemoryKey(input.content);
         const value = {
           content: input.content,
           tags: input.tags || [],
           source: "agent",
         };
-        await databaseManager.writeMemory(
-          dbConfig.dbType,
-          dbConfig.db,
-          dbConfig.connectionString,
-          userID,
-          key,
-          value,
-          "agent"
-        );
+        await memoryStore.writeMemory(userID, key, value, "agent");
         return `Saved to memory: "${input.content}"`;
       } catch (err) {
         return `Error saving memory: ${err.message}`;
@@ -91,23 +86,20 @@ export const memoryTools = [
       required: ["query"],
     },
     /**
-     * Search memories via databaseManager.readMemoryPattern and filter by query.
+     * Search memories via memoryStore.readMemoryPattern and filter by query.
      *
      * @param {Object} input - Tool input with query string
      * @param {AbortSignal} signal - Abort signal
-     * @param {Object} context - { userID, databaseManager, dbConfig }
+     * @param {Object} context - { userID, memoryStore }
      * @returns {Promise<string>} Formatted search results or "no matches" message
      */
     execute: async (input, signal, context) => {
       try {
-        const { userID, databaseManager, dbConfig } = context;
-        const all = await databaseManager.readMemoryPattern(
-          dbConfig.dbType,
-          dbConfig.db,
-          dbConfig.connectionString,
-          userID,
-          ".*"
-        );
+        const { userID, memoryStore } = context;
+        if (!memoryStore) {
+          return "Error: memoryStore not configured. Memory features are disabled.";
+        }
+        const all = await memoryStore.readMemoryPattern(userID, ".*");
 
         const query = input.query.toLowerCase();
         const matches = all
@@ -164,19 +156,20 @@ export const memoryTools = [
       required: ["key"],
     },
     /**
-     * Delete a memory via databaseManager.deleteMemory.
+     * Delete a memory via memoryStore.deleteMemory.
      *
      * @param {Object} input - Tool input with key
      * @param {AbortSignal} signal - Abort signal
-     * @param {Object} context - { userID, databaseManager, dbConfig }
+     * @param {Object} context - { userID, memoryStore }
      * @returns {Promise<string>} Confirmation message
      */
     execute: async (input, signal, context) => {
       try {
-        const { userID, databaseManager, dbConfig } = context;
-        const result = await databaseManager.deleteMemory(
-          dbConfig.dbType, dbConfig.db, dbConfig.connectionString, userID, input.key
-        );
+        const { userID, memoryStore } = context;
+        if (!memoryStore) {
+          return "Error: memoryStore not configured. Memory features are disabled.";
+        }
+        const result = await memoryStore.deleteMemory(userID, input.key);
         return result.deletedCount > 0 ? `Memory "${input.key}" deleted.` : "Memory not found.";
       } catch (err) {
         return `Error deleting memory: ${err.message}`;
@@ -193,23 +186,20 @@ export const memoryTools = [
       properties: {},
     },
     /**
-     * List all memories via databaseManager.readMemoryPattern.
+     * List all memories via memoryStore.readMemoryPattern.
      *
      * @param {Object} input - Tool input (empty)
      * @param {AbortSignal} signal - Abort signal
-     * @param {Object} context - { userID, databaseManager, dbConfig }
+     * @param {Object} context - { userID, memoryStore }
      * @returns {Promise<string>} Formatted list of all memories
      */
     execute: async (input, signal, context) => {
       try {
-        const { userID, databaseManager, dbConfig } = context;
-        const all = await databaseManager.readMemoryPattern(
-          dbConfig.dbType,
-          dbConfig.db,
-          dbConfig.connectionString,
-          userID,
-          ".*"
-        );
+        const { userID, memoryStore } = context;
+        if (!memoryStore) {
+          return "Error: memoryStore not configured. Memory features are disabled.";
+        }
+        const all = await memoryStore.readMemoryPattern(userID, ".*");
 
         if (all.length === 0) {
           return "No memories found.";
@@ -251,23 +241,20 @@ export const memoryTools = [
       required: ["key"],
     },
     /**
-     * Read a specific memory via databaseManager.readMemory.
+     * Read a specific memory via memoryStore.readMemory.
      *
      * @param {Object} input - Tool input with key
      * @param {AbortSignal} signal - Abort signal
-     * @param {Object} context - { userID, databaseManager, dbConfig }
+     * @param {Object} context - { userID, memoryStore }
      * @returns {Promise<string>} Memory content or not found message
      */
     execute: async (input, signal, context) => {
       try {
-        const { userID, databaseManager, dbConfig } = context;
-        const memory = await databaseManager.readMemory(
-          dbConfig.dbType,
-          dbConfig.db,
-          dbConfig.connectionString,
-          userID,
-          input.key
-        );
+        const { userID, memoryStore } = context;
+        if (!memoryStore) {
+          return "Error: memoryStore not configured. Memory features are disabled.";
+        }
+        const memory = await memoryStore.readMemory(userID, input.key);
 
         if (!memory || !memory.value) {
           return `Memory "${input.key}" not found.`;
@@ -317,30 +304,25 @@ export const memoryTools = [
       required: ["key", "content"],
     },
     /**
-     * Update or create a memory via databaseManager.writeMemory.
+     * Update or create a memory via memoryStore.writeMemory.
      *
      * @param {Object} input - Tool input with key, content, and optional tags
      * @param {AbortSignal} signal - Abort signal
-     * @param {Object} context - { userID, databaseManager, dbConfig }
+     * @param {Object} context - { userID, memoryStore }
      * @returns {Promise<string>} Confirmation message
      */
     execute: async (input, signal, context) => {
       try {
-        const { userID, databaseManager, dbConfig } = context;
+        const { userID, memoryStore } = context;
+        if (!memoryStore) {
+          return "Error: memoryStore not configured. Memory features are disabled.";
+        }
         const value = {
           content: input.content,
           tags: input.tags || [],
           source: "agent",
         };
-        await databaseManager.writeMemory(
-          dbConfig.dbType,
-          dbConfig.db,
-          dbConfig.connectionString,
-          userID,
-          input.key,
-          value,
-          "agent"
-        );
+        await memoryStore.writeMemory(userID, input.key, value, "agent");
         return `Memory "${input.key}" saved.`;
       } catch (err) {
         return `Error updating memory: ${err.message}`;
