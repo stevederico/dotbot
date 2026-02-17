@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { SessionStore } from './SessionStore.js';
 import { defaultSystemPrompt } from './MongoAdapter.js';
+import { toStandardFormat } from '../core/normalize.js';
 
 /**
  * SQLite-backed SessionStore implementation
@@ -158,9 +159,19 @@ export class SQLiteSessionStore extends SessionStore {
     return session;
   }
 
+  /**
+   * Save session with normalized messages.
+   * Converts any provider-specific message formats to standard format before persisting.
+   *
+   * @param {string} sessionId - Session UUID
+   * @param {Array} messages - Messages (provider-specific or standard format)
+   * @param {string} model - Model identifier
+   * @param {string} [provider] - Provider name
+   */
   async saveSession(sessionId, messages, model, provider) {
+    const normalized = toStandardFormat(messages);
     const updateFields = {
-      messages: JSON.stringify(messages),
+      messages: JSON.stringify(normalized),
       model,
       updatedAt: new Date().toISOString(),
     };
@@ -174,8 +185,8 @@ export class SQLiteSessionStore extends SessionStore {
     const titleRow = titleStmt.get(sessionId);
 
     if (titleRow && !titleRow.title) {
-      const firstUserMsg = messages.find((m) => m.role === 'user');
-      if (firstUserMsg) {
+      const firstUserMsg = normalized.find((m) => m.role === 'user');
+      if (firstUserMsg && typeof firstUserMsg.content === 'string') {
         updateFields.title = firstUserMsg.content.slice(0, 60);
       }
     }
@@ -191,11 +202,19 @@ export class SQLiteSessionStore extends SessionStore {
     stmt.run(...values, sessionId);
   }
 
+  /**
+   * Add a message to a session, normalizing to standard format before saving.
+   *
+   * @param {string} sessionId - Session UUID
+   * @param {Object} message - Message object (any provider format)
+   * @returns {Promise<Object>} Updated session
+   */
   async addMessage(sessionId, message) {
     const session = await this.getSessionInternal(sessionId);
     if (!session) throw new Error(`Session ${sessionId} not found`);
     if (!message._ts) message._ts = Date.now();
-    session.messages.push(message);
+    const normalized = toStandardFormat([message]);
+    session.messages.push(...normalized);
     await this.saveSession(sessionId, session.messages, session.model);
     return session;
   }

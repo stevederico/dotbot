@@ -1,6 +1,6 @@
 export { SessionStore } from './SessionStore.js';
 export { MongoSessionStore, defaultSystemPrompt } from './MongoAdapter.js';
-export { SQLiteSessionStore } from './SQLiteAdapter.js';
+// SQLiteSessionStore removed - dottie-os uses MongoDB only
 export { MemorySessionStore } from './MemoryStore.js';
 export { CronStore } from './CronStore.js';
 export { MongoCronStore, parseInterval, HEARTBEAT_INTERVAL_MS, HEARTBEAT_PROMPT } from './MongoCronAdapter.js';

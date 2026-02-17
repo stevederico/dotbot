@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { SessionStore } from './SessionStore.js';
+import { toStandardFormat } from '../core/normalize.js';
 
 /**
  * Default system prompt builder for DotBot agent
@@ -84,6 +85,36 @@ export class MongoSessionStore extends SessionStore {
       console.log(`[sessions] migrated ${legacy.length} legacy session(s)`);
     }
 
+    // Migrate existing sessions to standard message format.
+    // Detects provider-specific messages by checking for Anthropic content arrays
+    // or OpenAI tool_calls properties, then normalizes them. Idempotent — already
+    // normalized sessions pass through unchanged.
+    const allSessions = await this.collection.find({}).toArray();
+    let migrated = 0;
+    for (const doc of allSessions) {
+      if (!Array.isArray(doc.messages) || doc.messages.length === 0) continue;
+
+      const needsNormalization = doc.messages.some(
+        (m) => (m.role === 'assistant' && Array.isArray(m.content)) ||
+               (m.role === 'assistant' && m.tool_calls) ||
+               (m.role === 'tool') ||
+               (m.role === 'user' && Array.isArray(m.content) && m.content.some(b => b.type === 'tool_result'))
+      );
+
+      if (needsNormalization) {
+        const normalized = toStandardFormat(doc.messages);
+        await this.collection.updateOne(
+          { _id: doc._id },
+          { $set: { messages: normalized } }
+        );
+        migrated++;
+      }
+    }
+
+    if (migrated > 0) {
+      console.log(`[sessions] normalized messages in ${migrated} session(s)`);
+    }
+
     console.log('[sessions] initialized with MongoDB (multi-session)');
   }
 
@@ -154,9 +185,18 @@ export class MongoSessionStore extends SessionStore {
     return session;
   }
 
+  /**
+   * Save session with normalized messages.
+   * Converts any provider-specific message formats to standard format before persisting.
+   *
+   * @param {string} sessionId - Session UUID
+   * @param {Array} messages - Messages (provider-specific or standard format)
+   * @param {string} model - Model identifier
+   * @param {string} [provider] - Provider name
+   */
   async saveSession(sessionId, messages, model, provider) {
     const update = {
-      messages,
+      messages: toStandardFormat(messages),
       model,
       updatedAt: new Date(),
     };
@@ -168,8 +208,8 @@ export class MongoSessionStore extends SessionStore {
     // Auto-populate title from first user message if empty
     const session = await this.collection.findOne({ id: sessionId });
     if (session && !session.title) {
-      const firstUserMsg = messages.find((m) => m.role === 'user');
-      if (firstUserMsg) {
+      const firstUserMsg = update.messages.find((m) => m.role === 'user');
+      if (firstUserMsg && typeof firstUserMsg.content === 'string') {
         update.title = firstUserMsg.content.slice(0, 60);
       }
     }
@@ -177,11 +217,21 @@ export class MongoSessionStore extends SessionStore {
     await this.collection.updateOne({ id: sessionId }, { $set: update });
   }
 
+  /**
+   * Add a message to a session, normalizing to standard format before saving.
+   *
+   * @param {string} sessionId - Session UUID
+   * @param {Object} message - Message object (any provider format)
+   * @returns {Promise<Object>} Updated session
+   */
   async addMessage(sessionId, message) {
     const session = await this.getSessionInternal(sessionId);
     if (!session) throw new Error(`Session ${sessionId} not found`);
     if (!message._ts) message._ts = Date.now();
-    session.messages.push(message);
+    // Normalize the single message by running it through toStandardFormat,
+    // then append all resulting messages (may be 0 if it was a bare tool_result)
+    const normalized = toStandardFormat([message]);
+    session.messages.push(...normalized);
     await this.saveSession(sessionId, session.messages, session.model);
     return session;
   }
