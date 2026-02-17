@@ -6,6 +6,7 @@
 import { AI_PROVIDERS } from "../utils/providers.js";
 import { fetchWithFailover, FailoverError } from "./failover.js";
 import { toProviderFormat } from "./normalize.js";
+import { validateEvent, normalizeStatsEvent } from "./events.js";
 
 const OLLAMA_BASE = "http://localhost:11434";
 
@@ -43,7 +44,6 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
 
   while (iteration < maxIterations) {
     iteration++;
-    yield { type: "thinking" };
 
     // Build tool definitions in the format the provider expects
     const toolDefs = tools.map((t) => ({
@@ -121,7 +121,9 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
       const { url, headers, body } = buildAgentRequest(provider);
       response = await fetch(url, { method: "POST", headers, body, signal });
       if (!response.ok) {
-        yield { type: "error", error: `${provider.name} returned ${response.status}: ${await response.text()}` };
+        const errorEvent = { type: "error", error: `${provider.name} returned ${response.status}: ${await response.text()}` };
+        validateEvent(errorEvent);
+        yield errorEvent;
         return;
       }
     } else {
@@ -134,7 +136,9 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
         const msg = err instanceof FailoverError
           ? `All providers failed: ${err.attempts.map(a => `${a.provider}(${a.status})`).join(', ')}`
           : err.message;
-        yield { type: "error", error: msg };
+        const errorEvent = { type: "error", error: msg };
+        validateEvent(errorEvent);
+        yield errorEvent;
         return;
       }
     }
@@ -145,7 +149,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
 
     if (activeProvider.id === "anthropic") {
       // Anthropic SSE format: content_block_start, content_block_delta, content_block_stop, message_delta
-      const result = yield* parseAnthropicStream(response, fullContent, toolCalls, signal);
+      const result = yield* parseAnthropicStream(response, fullContent, toolCalls, signal, activeProvider.id);
       fullContent = result.fullContent;
       toolCalls = result.toolCalls;
     } else if (activeProvider.id === "dottie_desktop") {
@@ -153,7 +157,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
       // 1. delta.reasoning field (native reasoning) — handled by parseOpenAIStream
       // 2. Channel tokens in delta.content — parsed here
       // Detect which format by checking if thinking events arrive from the parser.
-      const gen = parseOpenAIStream(response, fullContent, toolCalls, signal);
+      const gen = parseOpenAIStream(response, fullContent, toolCalls, signal, activeProvider.id);
       let rawBuffer = "";
       let finalMarkerFound = false;
       let lastFinalYieldPos = 0;
@@ -213,7 +217,13 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
               const chunk = rawBuffer.slice(lastThinkingYieldPos, endIdx);
               if (chunk) {
                 console.log("[dottie_desktop] thinking (final):", chunk.slice(0, 80));
-                yield { type: "thinking", text: chunk };
+                const thinkingEvent = {
+                  type: "thinking",
+                  text: chunk,
+                  hasNativeThinking: false, // Channel token simulation
+                };
+                validateEvent(thinkingEvent);
+                yield thinkingEvent;
               }
               lastThinkingYieldPos = endIdx + ANALYSIS_END.length;
               analysisEnded = true;
@@ -221,7 +231,13 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
               const chunk = rawBuffer.slice(lastThinkingYieldPos);
               if (chunk) {
                 console.log("[dottie_desktop] thinking (incr):", chunk.slice(0, 80));
-                yield { type: "thinking", text: chunk };
+                const thinkingEvent = {
+                  type: "thinking",
+                  text: chunk,
+                  hasNativeThinking: false, // Channel token simulation
+                };
+                validateEvent(thinkingEvent);
+                yield thinkingEvent;
               }
               lastThinkingYieldPos = rawBuffer.length;
             }
@@ -235,7 +251,9 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
             lastFinalYieldPos = fIdx + FINAL_MARKER.length;
             const pending = rawBuffer.slice(lastFinalYieldPos);
             if (pending) {
-              yield { type: "text_delta", text: pending };
+              const textEvent = { type: "text_delta", text: pending };
+              validateEvent(textEvent);
+              yield textEvent;
               lastFinalYieldPos = rawBuffer.length;
             }
           }
@@ -243,7 +261,9 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
           // In final channel — yield incremental text
           const newText = rawBuffer.slice(lastFinalYieldPos);
           if (newText) {
-            yield { type: "text_delta", text: newText };
+            const textEvent = { type: "text_delta", text: newText };
+            validateEvent(textEvent);
+            yield textEvent;
             lastFinalYieldPos = rawBuffer.length;
           }
         }
@@ -253,7 +273,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
       if (!usesNativeReasoning) fullContent = stripGptOssTokens(fullContent);
     } else {
       // OpenAI-compatible SSE format (Ollama, OpenAI, xAI)
-      const result = yield* parseOpenAIStream(response, fullContent, toolCalls, signal);
+      const result = yield* parseOpenAIStream(response, fullContent, toolCalls, signal, activeProvider.id);
       fullContent = result.fullContent;
       toolCalls = result.toolCalls;
     }
@@ -288,11 +308,15 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
         const tc = assistantMsg.toolCalls[i];
         const tool = tools.find((t) => t.name === tc.name);
 
-        yield { type: "tool_start", name: tc.name, input: tc.input };
+        const toolStartEvent = { type: "tool_start", name: tc.name, input: tc.input };
+        validateEvent(toolStartEvent);
+        yield toolStartEvent;
 
         if (!tool) {
           const errorResult = `Tool "${tc.name}" not found`;
-          yield { type: "tool_error", name: tc.name, error: errorResult };
+          const toolErrorEvent = { type: "tool_error", name: tc.name, error: errorResult };
+          validateEvent(toolErrorEvent);
+          yield toolErrorEvent;
           tc.result = errorResult;
           tc.status = "error";
           continue;
@@ -302,12 +326,16 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
           const result = await tool.execute(tc.input, signal, context);
           const resultStr = typeof result === "string" ? result : JSON.stringify(result);
 
-          yield { type: "tool_result", name: tc.name, input: tc.input, result: resultStr };
+          const toolResultEvent = { type: "tool_result", name: tc.name, input: tc.input, result: resultStr };
+          validateEvent(toolResultEvent);
+          yield toolResultEvent;
           tc.result = resultStr;
           tc.status = "done";
         } catch (err) {
           const errorResult = `Tool error: ${err.message}`;
-          yield { type: "tool_error", name: tc.name, error: errorResult };
+          const toolErrorEvent = { type: "tool_error", name: tc.name, error: errorResult };
+          validateEvent(toolErrorEvent);
+          yield toolErrorEvent;
           tc.result = errorResult;
           tc.status = "error";
         }
@@ -327,14 +355,20 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
       // Standard format: plain string content, no provider-specific wrapping
       messages.push({ role: "assistant", content: fullContent, _ts: Date.now() });
       if (followup) {
-        yield { type: "followup", text: followup };
+        const followupEvent = { type: "followup", text: followup };
+        validateEvent(followupEvent);
+        yield followupEvent;
       }
-      yield { type: "done", content: fullContent };
+      const doneEvent = { type: "done", content: fullContent };
+      validateEvent(doneEvent);
+      yield doneEvent;
       return;
     }
   }
 
-  yield { type: "max_iterations", message: "I've reached my reasoning limit (10 steps). You can send another message to continue." };
+  const maxIterEvent = { type: "max_iterations", message: "I've reached my reasoning limit (10 steps). You can send another message to continue." };
+  validateEvent(maxIterEvent);
+  yield maxIterEvent;
 }
 
 /**
@@ -346,10 +380,11 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
  * @param {string} fullContent - Accumulated text content (passed by reference via return)
  * @param {Array} toolCalls - Accumulated tool calls (passed by reference via return)
  * @param {AbortSignal} [signal] - Optional abort signal to cancel the reader
+ * @param {string} [providerId] - Provider ID for stats normalization
  * @yields {Object} text_delta events
  * @returns {{ fullContent: string, toolCalls: Array }}
  */
-async function* parseOpenAIStream(response, fullContent, toolCalls, signal) {
+async function* parseOpenAIStream(response, fullContent, toolCalls, signal, providerId) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -380,13 +415,21 @@ async function* parseOpenAIStream(response, fullContent, toolCalls, signal) {
         // Reasoning/thinking content (gpt-oss, DeepSeek, etc.)
         const reasoning = delta.reasoning_content || delta.reasoning;
         if (reasoning) {
-          yield { type: "thinking", text: reasoning };
+          const thinkingEvent = {
+            type: "thinking",
+            text: reasoning,
+            hasNativeThinking: true, // Native reasoning from provider
+          };
+          validateEvent(thinkingEvent);
+          yield thinkingEvent;
         }
 
         // Text content
         if (delta.content) {
           fullContent += delta.content;
-          yield { type: "text_delta", text: delta.content };
+          const textEvent = { type: "text_delta", text: delta.content };
+          validateEvent(textEvent);
+          yield textEvent;
         }
 
         // Tool calls — assembled incrementally by index
@@ -409,12 +452,13 @@ async function* parseOpenAIStream(response, fullContent, toolCalls, signal) {
         if (chunk.choices?.[0]?.finish_reason) {
           // Some providers include usage stats
           if (chunk.usage) {
-            yield {
-              type: "stats",
+            const statsEvent = normalizeStatsEvent({
               model: chunk.model,
               prompt_tokens: chunk.usage.prompt_tokens,
               completion_tokens: chunk.usage.completion_tokens,
-            };
+            }, providerId || 'openai');
+            validateEvent(statsEvent);
+            yield statsEvent;
           }
         }
       } catch {
@@ -446,10 +490,11 @@ async function* parseOpenAIStream(response, fullContent, toolCalls, signal) {
  * @param {string} fullContent - Accumulated text content
  * @param {Array} toolCalls - Accumulated tool calls
  * @param {AbortSignal} [signal] - Optional abort signal to cancel the reader
+ * @param {string} [providerId] - Provider ID for stats normalization
  * @yields {Object} text_delta events
  * @returns {{ fullContent: string, toolCalls: Array }}
  */
-async function* parseAnthropicStream(response, fullContent, toolCalls, signal) {
+async function* parseAnthropicStream(response, fullContent, toolCalls, signal, providerId) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -497,11 +542,19 @@ async function* parseAnthropicStream(response, fullContent, toolCalls, signal) {
           const delta = event.delta;
           if (delta.type === "thinking_delta") {
             if (contentBlocks[idx]) contentBlocks[idx].text += delta.thinking;
-            yield { type: "thinking", text: delta.thinking };
+            const thinkingEvent = {
+              type: "thinking",
+              text: delta.thinking,
+              hasNativeThinking: true, // Native thinking from Anthropic
+            };
+            validateEvent(thinkingEvent);
+            yield thinkingEvent;
           } else if (delta.type === "text_delta") {
             fullContent += delta.text;
             if (contentBlocks[idx]) contentBlocks[idx].text += delta.text;
-            yield { type: "text_delta", text: delta.text };
+            const textEvent = { type: "text_delta", text: delta.text };
+            validateEvent(textEvent);
+            yield textEvent;
           } else if (delta.type === "input_json_delta") {
             if (contentBlocks[idx]) contentBlocks[idx].inputJson += delta.partial_json;
           }
@@ -509,12 +562,13 @@ async function* parseAnthropicStream(response, fullContent, toolCalls, signal) {
 
         if (event.type === "message_delta") {
           if (event.usage) {
-            yield {
-              type: "stats",
+            const statsEvent = normalizeStatsEvent({
               model: event.model || "",
               input_tokens: event.usage.input_tokens,
               output_tokens: event.usage.output_tokens,
-            };
+            }, providerId || 'anthropic');
+            validateEvent(statsEvent);
+            yield statsEvent;
           }
         }
       } catch {

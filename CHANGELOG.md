@@ -1,3 +1,12 @@
+0.9.2
+
+  Standardize SSE events across all providers
+  Add core/events.js with event schemas and validation
+  Normalize thinking events (always include text + hasNativeThinking flag)
+  Normalize stats events (inputTokens/outputTokens across all providers)
+  Remove bare thinking events at iteration start
+  Validate all events before emission
+
 0.9.1
 
   Remove SQLiteSessionStore exports

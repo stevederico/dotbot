@@ -69,6 +69,9 @@ export { compactMessages, estimateTokens } from './core/compaction.js';
 // Export message normalization
 export { toStandardFormat, toProviderFormat, normalizeMessages } from './core/normalize.js';
 
+// Export event system
+export { validateEvent, normalizeStatsEvent } from './core/events.js';
+
 /**
  * Create an agent instance with configurable stores, providers, and tools
  *
