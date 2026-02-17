@@ -24,6 +24,7 @@ import {
 // Export core abstractions
 export {
   SessionStore,
+  SQLiteSessionStore,
   MongoSessionStore,
   MemorySessionStore,
   defaultSystemPrompt,
