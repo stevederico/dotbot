@@ -24,7 +24,7 @@ import {
 // Export core abstractions
 export {
   SessionStore,
-  // SQLiteSessionStore removed - dottie-os uses MongoDB only
+  SQLiteSessionStore,
   MongoSessionStore,
   MemorySessionStore,
   defaultSystemPrompt,
