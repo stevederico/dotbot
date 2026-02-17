@@ -1,3 +1,10 @@
+0.9.4
+
+  Add Cerebras provider
+  Add local text tool call parsing
+  Add passthrough mode for plain models
+  Restore SQLiteSessionStore export
+
 0.9.3
 
   Fix OpenAI content

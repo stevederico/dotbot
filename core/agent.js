@@ -7,6 +7,7 @@ import { AI_PROVIDERS } from "../utils/providers.js";
 import { fetchWithFailover, FailoverError } from "./failover.js";
 import { toProviderFormat } from "./normalize.js";
 import { validateEvent, normalizeStatsEvent } from "./events.js";
+import { hasToolCallMarkers, parseToolCalls, stripToolCallMarkers } from "./gptoss_tool_parser.js";
 
 const OLLAMA_BASE = "http://localhost:11434";
 
@@ -104,15 +105,50 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
       }
 
       // OpenAI-compatible path
+      let finalMessages = wireMessages;
+
+      // Local providers use text-based tool calls via system prompt, so convert
+      // role:"tool" messages to role:"user" and strip tool_calls from assistant
+      // messages — unless the model's chat template supports role:"tool" natively
+      // (e.g. LFM2.5). Models that support it set supportsToolRole on the provider.
+      if (targetProvider.local && !targetProvider.supportsToolRole) {
+        finalMessages = [];
+        const tcNameMap = {};
+        for (const msg of wireMessages) {
+          if (msg.role === 'assistant' && msg.tool_calls) {
+            for (const tc of msg.tool_calls) {
+              tcNameMap[tc.id] = tc.function?.name || 'unknown';
+            }
+            const { tool_calls, ...rest } = msg;
+            finalMessages.push(rest);
+          } else if (msg.role === 'tool') {
+            const name = tcNameMap[msg.tool_call_id] || 'unknown';
+            finalMessages.push({
+              role: 'user',
+              content: `[Tool Result for ${name}]: ${msg.content}`,
+            });
+          } else {
+            finalMessages.push(msg);
+          }
+        }
+      }
+
+      const requestBody = {
+        model: targetModel,
+        messages: finalMessages,
+        stream: true,
+      };
+
+      // Include tool definitions for non-local providers and local providers
+      // that support native tool calling (e.g., GLM-4.7 via mlx_lm.server v0.30.7+)
+      if (!targetProvider.local || targetProvider.supportsToolRole) {
+        requestBody.tools = toolDefs;
+      }
+
       return {
         url: `${targetProvider.apiUrl}${targetProvider.endpoint}`,
         headers: targetProvider.headers(targetApiKey),
-        body: JSON.stringify({
-          model: targetModel,
-          messages: wireMessages,
-          tools: toolDefs,
-          stream: true,
-        }),
+        body: JSON.stringify(requestBody),
       };
     };
 
@@ -153,21 +189,24 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
       fullContent = result.fullContent;
       toolCalls = result.toolCalls;
     } else if (activeProvider.id === "dottie_desktop") {
-      // Dottie Desktop serves gpt-oss which may use either:
-      // 1. delta.reasoning field (native reasoning) — handled by parseOpenAIStream
-      // 2. Channel tokens in delta.content — parsed here
-      // Detect which format by checking if thinking events arrive from the parser.
+      // Dottie Desktop serves local models which may use:
+      // 1. gpt-oss channel tokens (<|channel|>analysis/final<|message|>)
+      // 2. Native reasoning (delta.reasoning from parseOpenAIStream)
+      // 3. Plain text (LFM2.5, SmolLM, etc. — no special tokens)
+      // Detect format by buffering initial tokens and checking for markers.
       const gen = parseOpenAIStream(response, fullContent, toolCalls, signal, activeProvider.id);
       let rawBuffer = "";
       let finalMarkerFound = false;
       let lastFinalYieldPos = 0;
       let usesNativeReasoning = false;
+      let usesPassthrough = false; // Models without channel tokens (LFM, SmolLM, etc.)
       let analysisStarted = false;
       let analysisEnded = false;
       let lastThinkingYieldPos = 0;
       const ANALYSIS_MARKER = "<|channel|>analysis<|message|>";
       const ANALYSIS_END = "<|end|>";
       const FINAL_MARKER = "<|channel|>final<|message|>";
+      const CHANNEL_DETECT_THRESHOLD = 200; // chars before assuming no channel tokens
 
       while (true) {
         const { value, done } = await gen.next();
@@ -196,8 +235,26 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
           continue;
         }
 
+        // Passthrough mode: model doesn't use channel tokens, stream directly
+        if (usesPassthrough) {
+          yield value;
+          continue;
+        }
+
         // Channel token mode: buffer and parse markers, stream thinking incrementally
         rawBuffer += value.text;
+
+        // Fallback: if enough text accumulated without any channel token,
+        // the model doesn't use gpt-oss format (e.g. LFM2.5, SmolLM).
+        // Flush buffer and switch to passthrough for remaining tokens.
+        if (!analysisStarted && !finalMarkerFound && rawBuffer.length > CHANNEL_DETECT_THRESHOLD) {
+          console.log("[dottie_desktop] no channel tokens after", rawBuffer.length, "chars — switching to passthrough");
+          usesPassthrough = true;
+          const textEvent = { type: "text_delta", text: rawBuffer };
+          validateEvent(textEvent);
+          yield textEvent;
+          continue;
+        }
 
         if (!finalMarkerFound) {
           // Detect analysis channel start
@@ -270,7 +327,18 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
       }
 
       // Clean fullContent for persistence (strip channel tokens)
-      if (!usesNativeReasoning) fullContent = stripGptOssTokens(fullContent);
+      if (!usesNativeReasoning && !usesPassthrough) fullContent = stripGptOssTokens(fullContent);
+
+      // Detect text-based tool calls from <tool_call> markers in model output.
+      // Models without native tool_calls support emit tool invocations as text
+      // when instructed via system prompt.
+      if (hasToolCallMarkers(fullContent)) {
+        const textToolCalls = parseToolCalls(fullContent);
+        if (textToolCalls.length > 0) {
+          toolCalls = textToolCalls;
+          fullContent = stripToolCallMarkers(fullContent);
+        }
+      }
     } else {
       // OpenAI-compatible SSE format (Ollama, OpenAI, xAI)
       const result = yield* parseOpenAIStream(response, fullContent, toolCalls, signal, activeProvider.id);

@@ -90,6 +90,28 @@ export const AI_PROVIDERS = {
     }),
     formatResponse: (data) => data.choices?.[0]?.message?.content
   },
+  cerebras: {
+    id: 'cerebras',
+    name: 'Cerebras',
+    apiUrl: 'https://api.cerebras.ai/v1',
+    defaultModel: 'qwen-3-235b-a22b-instruct-2507',
+    models: [
+      { id: 'llama3.1-8b', name: 'Llama 3.1 8B' },
+      { id: 'qwen-3-235b-a22b-instruct-2507', name: 'Qwen 3 235B' },
+      { id: 'gpt-oss-120b', name: 'GPT-OSS 120B' },
+      { id: 'zai-glm-4.7', name: 'ZAI GLM 4.7' },
+    ],
+    headers: (apiKey) => ({
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    }),
+    endpoint: '/chat/completions',
+    formatRequest: (messages, model) => ({
+      model,
+      messages
+    }),
+    formatResponse: (data) => data.choices?.[0]?.message?.content
+  },
   ollama: {
     id: 'ollama',
     name: 'Ollama (Local)',
