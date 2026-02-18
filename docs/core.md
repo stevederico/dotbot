@@ -83,3 +83,21 @@ Standard AI Agent Tools (Industry Common)
   4. Code execution
 
   Everything else is optional depending on use case.
+
+
+Anthropic SDK
+  Built-in tools - Read files, run bash commands, edit code, search web, glob patterns. Zero setup needed.
+Context management - Automatic compaction, long-running sessions, context windows handled for you.
+Agent loop - Built-in gather → action → verify → repeat pattern.
+MCP integration - Connect to any MCP server for enterprise tools (Slack, GitHub, Drive, etc).
+Hooks - Intercept tool calls, modify behavior, add custom logic.
+Subagents - Spawn specialized agents for parallel work.
+Permissions - Fine-grained control over what agents can access/modify.
+Structured outputs - JSON schema support.
+
+
+xAI
+
+xai-sdk (Python/TypeScript) - standard client SDK
+Agent Tools API - server-side tools (web search, X search, code execution, MCP, file search)
+Agentic tool calling - Grok decides when to invoke tools autonomously
