@@ -22,7 +22,7 @@ Your Application (Hono, Express, Fastify, Deno, etc.)
    createAgent()          ← dotbot-sdk
    ┌────────────────────────────────────────────┐
    │  Agent Loop          streaming async gen   │
-   │  Tool Registry       45 built-in tools     │
+   │  Tool Registry       47 built-in tools     │
    │  SessionStore        pluggable adapters     │
    │  CronStore           scheduled tasks        │
    │  GoalStore           multi-step execution   │
@@ -42,7 +42,7 @@ Your Application (Hono, Express, Fastify, Deno, etc.)
 - **Provider failover** — Automatic retry on alternate provider if primary fails
 - **Database-agnostic** — Abstract store interfaces with MongoDB and SQLite adapters included
 - **Streaming-first** — `agent.chat()` is an async generator yielding typed SSE events (`text_delta`, `tool_start`, `tool_result`, `thinking`, `done`, `stats`)
-- **45 built-in tools** — Memory, web search, browser automation, file I/O, image generation, weather, goals, triggers, cron, and more
+- **47 built-in tools** — Memory, web search, browser automation, file I/O, image generation, weather, goals, triggers, cron, and more
 - **Custom tools** — Register any tool with a simple `{ name, description, parameters, execute }` object
 - **Goal system** — Multi-step autonomous workflows with priority, deadline, and auto-execution mode
 - **Event-driven triggers** — React to application events with agent responses, with cooldown control
@@ -135,7 +135,7 @@ for await (const event of agent.chat({
 │   ├── GoalStore.js      # Abstract goal interface
 │   ├── TriggerStore.js   # Abstract trigger interface
 │   └── Mongo*.js         # MongoDB adapters for all stores
-├── tools/                # 45 built-in tools across 12 categories
+├── tools/                # 47 built-in tools across 13 categories
 │   ├── memory.js         # Long-term memory (save, search, update, delete)
 │   ├── web.js            # Web search and fetch
 │   ├── browser.js        # Playwright browser automation
@@ -341,7 +341,7 @@ class SessionStore {
 
 ---
 
-## Built-in Tools (45)
+## Built-in Tools (47)
 
 ### Memory (6)
 `memory_save`, `memory_search`, `memory_delete`, `memory_list`, `memory_read`, `memory_update`
@@ -378,6 +378,10 @@ class SessionStore {
 
 ### Cron (1+)
 `schedule_task` — Agent-callable scheduled task creation
+
+### App Generation (2)
+`app_generate` — Generate React components from natural language prompts
+`app_validate` — Validate generated component code
 
 ---
 

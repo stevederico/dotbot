@@ -16,6 +16,8 @@ import { browserTools, createBrowserTools } from './browser.js';
 import { goalTools } from './goals.js';
 import { triggerTools } from './triggers.js';
 import { taskTools, cronTools } from './tasks.js';
+import { eventTools } from './events.js';
+import { appgenTools } from './appgen.js';
 
 /**
  * Core tools included in the library by default
@@ -33,6 +35,8 @@ export const coreTools = [
   ...goalTools,
   ...triggerTools,
   ...taskTools,
+  ...eventTools,
+  ...appgenTools,
 ];
 
 /**
@@ -87,4 +91,6 @@ export {
   triggerTools,
   taskTools,
   cronTools,  // backwards compatibility alias
+  eventTools,
+  appgenTools,
 };

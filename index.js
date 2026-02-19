@@ -21,6 +21,8 @@ import {
   triggerTools,
   taskTools,
   cronTools,
+  eventTools,
+  appgenTools,
 } from './tools/index.js';
 
 // Export core abstractions
@@ -44,6 +46,8 @@ export {
   MongoTriggerStore,
   SQLiteTriggerStore,
   SQLiteMemoryStore,
+  EventStore,
+  SQLiteEventStore,
 } from './storage/index.js';
 
 // Export tool system
@@ -64,6 +68,8 @@ export {
   triggerTools,
   taskTools,
   cronTools,  // backwards compatibility alias
+  eventTools,
+  appgenTools,
 } from './tools/index.js';
 
 // Export provider configuration
@@ -101,6 +107,7 @@ export { createTriggerHandler } from './core/trigger_handler.js';
  * @param {GoalStore} [options.goalStore] - Optional goal storage backend for multi-step autonomous execution
  * @param {TriggerStore} [options.triggerStore] - Optional trigger storage backend for event-driven responses
  * @param {SQLiteMemoryStore} [options.memoryStore] - Optional memory storage backend for long-term memory
+ * @param {EventStore} [options.eventStore] - Optional event storage backend for usage analytics
  * @param {Function} [options.screenshotUrlPattern] - Screenshot URL pattern: (filename) => URL string
  * @param {Object} [options.compaction] - Compaction settings: { enabled: true, ... }
  * @returns {Object} Agent API
@@ -114,6 +121,7 @@ export function createAgent({
   goalStore = null,
   triggerStore = null,
   memoryStore = null,
+  eventStore = null,
   screenshotUrlPattern = (filename) => `/screenshots/${filename}`,
   compaction = { enabled: true },
 } = {}) {
@@ -139,6 +147,8 @@ export function createAgent({
       ...goalTools,
       ...triggerTools,
       ...taskTools,
+      ...eventTools,
+      ...appgenTools,
     ];
   }
 
@@ -168,6 +178,7 @@ export function createAgent({
         goalStore,
         triggerStore,
         memoryStore,
+        eventStore,
       };
 
       // Resolve string provider ID to a full provider config object.
@@ -310,6 +321,15 @@ export function createAgent({
      */
     getMemoryStore() {
       return memoryStore;
+    },
+
+    /**
+     * Get event store (if configured)
+     *
+     * @returns {EventStore|null} Event store instance
+     */
+    getEventStore() {
+      return eventStore;
     },
   };
 }
