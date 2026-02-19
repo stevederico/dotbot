@@ -15,6 +15,7 @@ export const AI_PROVIDERS = {
   anthropic: {
     id: 'anthropic',
     name: 'Anthropic',
+    envKey: 'ANTHROPIC_API_KEY',
     apiUrl: 'https://api.anthropic.com/v1',
     defaultModel: 'claude-sonnet-4-5',
     models: [
@@ -40,6 +41,7 @@ export const AI_PROVIDERS = {
   openai: {
     id: 'openai',
     name: 'OpenAI',
+    envKey: 'OPENAI_API_KEY',
     apiUrl: 'https://api.openai.com/v1',
     defaultModel: 'gpt-4o',
     models: [
@@ -64,6 +66,7 @@ export const AI_PROVIDERS = {
   xai: {
     id: 'xai',
     name: 'xAI',
+    envKey: 'XAI_API_KEY',
     apiUrl: 'https://api.x.ai/v1',
     defaultModel: 'grok-4-1-fast-reasoning',
     models: [
@@ -93,6 +96,7 @@ export const AI_PROVIDERS = {
   cerebras: {
     id: 'cerebras',
     name: 'Cerebras',
+    envKey: 'CEREBRAS_API_KEY',
     apiUrl: 'https://api.cerebras.ai/v1',
     defaultModel: 'qwen-3-235b-a22b-instruct-2507',
     models: [
