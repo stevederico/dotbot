@@ -30,7 +30,7 @@ Your Application (Hono, Express, Fastify, Deno, etc.)
    └────────────────────────────────────────────┘
         │
         ▼
-   AI Providers (Anthropic, OpenAI, xAI, Ollama)
+   AI Providers (Anthropic, OpenAI, xAI, Cerebras, Ollama)
 ```
 
 ---
@@ -38,7 +38,7 @@ Your Application (Hono, Express, Fastify, Deno, etc.)
 ## Features
 
 - **Framework-agnostic** — Works with any Node.js web framework (Hono, Express, Fastify, Deno)
-- **Provider-agnostic** — Runtime-injected API keys; switch providers per-request. Supports Anthropic, OpenAI, xAI, Ollama
+- **Provider-agnostic** — Runtime-injected API keys; switch providers per-request. Supports Anthropic, OpenAI, xAI, Cerebras, Ollama
 - **Provider failover** — Automatic retry on alternate provider if primary fails
 - **Database-agnostic** — Abstract store interfaces with MongoDB and SQLite adapters included
 - **Streaming-first** — `agent.chat()` is an async generator yielding typed SSE events (`text_delta`, `tool_start`, `tool_result`, `thinking`, `done`, `stats`)
@@ -139,9 +139,11 @@ for await (const event of agent.chat({
 │   ├── memory.js         # Long-term memory (save, search, update, delete)
 │   ├── web.js            # Web search and fetch
 │   ├── browser.js        # Playwright browser automation
+│   ├── images.js         # Image generation + shared helpers
+│   ├── appgen.js         # App generation tools + shared helpers
 │   ├── goals.js          # Multi-step goal execution
 │   ├── triggers.js       # Event-driven trigger management
-│   ├── cron.js           # Scheduled task management
+│   ├── tasks.js          # Scheduled task management
 │   └── ...
 └── utils/
     └── providers.js      # Provider configurations (Anthropic, OpenAI, xAI, Ollama)
@@ -231,9 +233,10 @@ createAgent({
     anthropic?:        { apiKey: string },
     openai?:           { apiKey: string },
     xai?:              { apiKey: string },
+    cerebras?:         { apiKey: string },
     ollama?:           { baseUrl: string },
   },
-  tools?:              Tool[],                   // defaults to coreTools (45 tools)
+  tools?:              Tool[],                   // defaults to coreTools (47 tools)
   systemPrompt?:       (name, personality, timestamp) => string,
   cronStore?:          CronStore,
   goalStore?:          GoalStore,
@@ -385,6 +388,56 @@ class SessionStore {
 
 ---
 
+## Shared Helpers
+
+Some tools export standalone helper functions for use outside the agent loop (e.g., in HTTP endpoints).
+
+### Image Generation Helpers
+
+```javascript
+import {
+  generateImage,
+  extractVisualPrompt,
+  generateImageFromText,
+  GROK_IMAGINE_MODEL
+} from '@dottie/agent/tools/images';
+
+// Direct image generation
+const result = await generateImage('A sunset over mountains', apiKey);
+// { success: true, url: '...', prompt: '...' }
+
+// Extract visual themes from text, then generate
+const result = await generateImageFromText({ text: 'Long article...' }, apiKey);
+
+// Just extract the visual prompt
+const { prompt } = await extractVisualPrompt('Long article...', apiKey);
+```
+
+### App Generation Helpers
+
+```javascript
+import {
+  APP_GENERATION_PROMPT,
+  cleanGeneratedCode,
+  validateGeneratedCode,
+  extractAppName
+} from '@dottie/agent/tools/appgen';
+
+// Use the system prompt directly
+const messages = [
+  { role: 'system', content: APP_GENERATION_PROMPT },
+  { role: 'user', content: 'Create a todo app' }
+];
+
+// Clean AI-generated code
+const { code, windowSize } = cleanGeneratedCode(rawCode);
+
+// Validate before execution
+const { valid, error } = validateGeneratedCode(code);
+```
+
+---
+
 ## Custom Tools
 
 ```javascript
@@ -507,9 +560,19 @@ const forOpenAI    = toProviderFormat(standard, 'openai');
 | Anthropic Claude | `anthropic` | `apiKey` | Native thinking, 200k context |
 | OpenAI GPT | `openai` | `apiKey` | Function calling, JSON mode |
 | xAI Grok | `xai` | `apiKey` | Real-time web search, image generation |
+| Cerebras | `cerebras` | `apiKey` | Ultra-fast inference |
 | Ollama | `ollama` | `baseUrl` | Local inference, no API cost |
 
 Provider failover is automatic — if the primary fails (rate limit, error, timeout), the agent retries or switches.
+
+Each provider config includes an `envKey` field for environment variable lookup:
+```javascript
+import { AI_PROVIDERS } from '@dottie/agent';
+
+// AI_PROVIDERS.anthropic.envKey === 'ANTHROPIC_API_KEY'
+// AI_PROVIDERS.xai.envKey === 'XAI_API_KEY'
+const apiKey = process.env[AI_PROVIDERS[providerId].envKey];
+```
 
 ---
 
