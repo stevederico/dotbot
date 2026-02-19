@@ -1,7 +1,7 @@
 /**
- * Cron Tools
+ * Task Tools
  *
- * Agent tools for scheduling and managing cron tasks.
+ * Agent tools for scheduling and managing tasks.
  * Each tool receives (input, signal, context) where context.cronStore
  * provides the storage backend.
  */
@@ -9,10 +9,10 @@
 import { parseInterval } from '../storage/cron_constants.js';
 
 /**
- * Agent tools for scheduling and managing cron tasks
+ * Agent tools for scheduling and managing tasks
  * @type {Array<{name: string, description: string, parameters: Object, execute: Function}>}
  */
-export const cronTools = [
+export const taskTools = [
   {
     name: "schedule_task",
     description:
@@ -148,3 +148,6 @@ export const cronTools = [
     },
   },
 ];
+
+// Backwards compatibility alias
+export const cronTools = taskTools;
