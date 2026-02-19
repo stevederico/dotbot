@@ -40,6 +40,26 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
     provider = AI_PROVIDERS.ollama;
   }
 
+  // Helper to log events (fire-and-forget, non-blocking)
+  const logEvent = (type, data = {}) => {
+    if (context?.eventStore && context?.userID) {
+      context.eventStore.logEvent({
+        userId: context.userID,
+        type,
+        data,
+      }).catch(() => {}); // Swallow errors to avoid breaking the agent loop
+    }
+  };
+
+  // Log message_sent for the latest user message (first iteration only)
+  const lastUserMsg = messages.filter(m => m.role === 'user').slice(-1)[0];
+  if (lastUserMsg) {
+    const content = typeof lastUserMsg.content === 'string'
+      ? lastUserMsg.content
+      : JSON.stringify(lastUserMsg.content);
+    logEvent('message_sent', { length: content.length });
+  }
+
   const maxIterations = 10;
   let iteration = 0;
 
@@ -399,6 +419,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
           yield toolResultEvent;
           tc.result = resultStr;
           tc.status = "done";
+          logEvent('tool_call', { tool: tc.name, success: true });
         } catch (err) {
           const errorResult = `Tool error: ${err.message}`;
           const toolErrorEvent = { type: "tool_error", name: tc.name, error: errorResult };
@@ -406,6 +427,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
           yield toolErrorEvent;
           tc.result = errorResult;
           tc.status = "error";
+          logEvent('tool_call', { tool: tc.name, success: false });
         }
       }
 
@@ -422,6 +444,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
 
       // Standard format: plain string content, no provider-specific wrapping
       messages.push({ role: "assistant", content: fullContent, _ts: Date.now() });
+      logEvent('message_received', { length: fullContent.length });
       if (followup) {
         const followupEvent = { type: "followup", text: followup };
         validateEvent(followupEvent);

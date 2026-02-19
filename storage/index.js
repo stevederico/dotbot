@@ -12,4 +12,6 @@ export { TriggerStore } from './TriggerStore.js';
 export { MongoTriggerStore } from './MongoTriggerAdapter.js';
 export { SQLiteTriggerStore } from './SQLiteTriggerAdapter.js';
 export { SQLiteMemoryStore } from './SQLiteMemoryAdapter.js';
+export { EventStore } from './EventStore.js';
+export { SQLiteEventStore } from './SQLiteEventStore.js';
 export * from './cron_constants.js';
