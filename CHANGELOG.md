@@ -1,3 +1,8 @@
+0.10.1
+
+  Rename cronTools to taskTools
+  Add backwards compatibility alias
+
 0.10.0
 
   Add init() unified initialization

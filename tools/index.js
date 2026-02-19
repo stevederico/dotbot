@@ -15,7 +15,7 @@ import { notifyTools } from './notify.js';
 import { browserTools, createBrowserTools } from './browser.js';
 import { goalTools } from './goals.js';
 import { triggerTools } from './triggers.js';
-import { cronTools } from './cron.js';
+import { taskTools, cronTools } from './tasks.js';
 
 /**
  * Core tools included in the library by default
@@ -32,7 +32,7 @@ export const coreTools = [
   ...browserTools,
   ...goalTools,
   ...triggerTools,
-  ...cronTools,
+  ...taskTools,
 ];
 
 /**
@@ -85,5 +85,6 @@ export {
   createBrowserTools,
   goalTools,
   triggerTools,
-  cronTools,
+  taskTools,
+  cronTools,  // backwards compatibility alias
 };

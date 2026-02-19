@@ -19,6 +19,7 @@ import {
   createBrowserTools,
   goalTools,
   triggerTools,
+  taskTools,
   cronTools,
 } from './tools/index.js';
 
@@ -61,7 +62,8 @@ export {
   createBrowserTools,
   goalTools,
   triggerTools,
-  cronTools,
+  taskTools,
+  cronTools,  // backwards compatibility alias
 } from './tools/index.js';
 
 // Export provider configuration
@@ -136,7 +138,7 @@ export function createAgent({
       ...customBrowserTools,
       ...goalTools,
       ...triggerTools,
-      ...cronTools,
+      ...taskTools,
     ];
   }
 
