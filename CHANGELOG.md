@@ -1,3 +1,10 @@
+0.12.0
+
+  Add EventStore interface
+  Add SQLiteEventStore implementation
+  Add eventTools (event_query, events_summary)
+  Add event logging to agent loop
+
 0.11.1
 
   Add appgenTools (app_generate, app_validate)
@@ -7,12 +14,6 @@
   Add generateImageFromText helper
   Export appgenTools from index
   Update README for 47 tools
-
-0.11.0
-
-  Add EventStore for usage analytics
-  Add SQLiteEventStore
-  Add eventTools
 
 0.10.1
 
