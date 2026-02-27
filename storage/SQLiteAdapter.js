@@ -297,4 +297,20 @@ export class SQLiteSessionStore extends SessionStore {
       updatedAt: new Date(row.updatedAt),
     };
   }
+
+  /**
+   * Close the database connection and checkpoint WAL.
+   */
+  close() {
+    if (this.db) {
+      try {
+        this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+        this.db.close();
+        this.db = null;
+        console.log('[session] SQLiteSessionStore closed');
+      } catch (err) {
+        console.error('[session] Error closing database:', err.message);
+      }
+    }
+  }
 }

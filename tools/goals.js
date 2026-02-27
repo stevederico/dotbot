@@ -59,7 +59,7 @@ export const goalTools = [
           mode: input.mode || 'auto',
         });
 
-        const goalId = goal._id.toString();
+        const goalId = goal.id || goal._id?.toString();
 
         return `Goal created: "${input.description}" (ID: ${goalId})\n` +
                `Mode: ${goal.mode}, Priority: ${goal.priority}, Steps: ${goal.steps.length}` +
@@ -104,11 +104,12 @@ export const goalTools = [
         }
 
         return goals.map((g, i) => {
+          const goalId = g.id || g._id?.toString();
           const doneCount = g.steps?.filter(s => s.done).length || 0;
           const totalSteps = g.steps?.length || 0;
           const progress = totalSteps > 0 ? `${doneCount}/${totalSteps} steps` : 'No steps';
           const status = g.status === 'completed' ? '✓' : g.status === 'in_progress' ? '▶' : '○';
-          return `${status} ${g.description} [${g.priority}] - ${progress} (${g.progress}%)`;
+          return `${status} [${goalId}] ${g.description} [${g.priority}] - ${progress} (${g.progress}%)`;
         }).join('\n');
       } catch (err) {
         return `Error listing goals: ${err.message}`;

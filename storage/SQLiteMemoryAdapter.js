@@ -221,4 +221,20 @@ export class SQLiteMemoryStore {
       return value;
     }
   }
+
+  /**
+   * Close the database connection and checkpoint WAL.
+   */
+  close() {
+    if (this.db) {
+      try {
+        this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+        this.db.close();
+        this.db = null;
+        console.log('[memory] SQLiteMemoryStore closed');
+      } catch (err) {
+        console.error('[memory] Error closing database:', err.message);
+      }
+    }
+  }
 }

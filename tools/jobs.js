@@ -1,7 +1,7 @@
 /**
- * Task Tools
+ * Job Tools
  *
- * Agent tools for scheduling and managing tasks.
+ * Agent tools for scheduling and managing jobs.
  * Each tool receives (input, signal, context) where context.cronStore
  * provides the storage backend.
  */
@@ -9,25 +9,25 @@
 import { parseInterval } from '../storage/cron_constants.js';
 
 /**
- * Agent tools for scheduling and managing tasks
+ * Agent tools for scheduling and managing jobs
  * @type {Array<{name: string, description: string, parameters: Object, execute: Function}>}
  */
-export const taskTools = [
+export const jobTools = [
   {
-    name: "schedule_task",
+    name: "schedule_job",
     description:
-      "Schedule a task to run later or on a recurring basis. The task will send a message to you (the agent) at the scheduled time, and you will process it like a normal user message. Use this for reminders, periodic checks, daily summaries, etc.",
+      "Schedule a job to run later or on a recurring basis. The job will send a message to you (the agent) at the scheduled time, and you will process it like a normal user message. Use this for reminders, periodic checks, daily summaries, etc.",
     parameters: {
       type: "object",
       properties: {
         name: {
           type: "string",
-          description: "Short name for the task. e.g. 'daily-news-summary', 'remind-standup'",
+          description: "Short name for the job. e.g. 'daily-news-summary', 'remind-standup'",
         },
         prompt: {
           type: "string",
           description:
-            "The message that will be sent to you when the task fires. Write it as if the user is asking you to do something. e.g. 'Give me a summary of today\\'s top tech news' or 'Remind me about the standup meeting in 10 minutes'",
+            "The message that will be sent to you when the job fires. Write it as if the user is asking you to do something. e.g. 'Give me a summary of today\\'s top tech news' or 'Remind me about the standup meeting in 10 minutes'",
         },
         run_at: {
           type: "string",
@@ -37,7 +37,7 @@ export const taskTools = [
         interval: {
           type: "string",
           description:
-            "For recurring tasks: interval between runs. e.g. '30m' (30 minutes), '2h' (2 hours), '1d' (daily), '1w' (weekly). Omit for one-shot tasks.",
+            "For recurring jobs: interval between runs. e.g. '30m' (30 minutes), '2h' (2 hours), '1d' (daily), '1w' (weekly). Omit for one-shot jobs.",
         },
       },
       required: ["name", "prompt", "run_at"],
@@ -60,19 +60,19 @@ export const taskTools = [
         });
 
         const desc = recurring
-          ? `Recurring task "${input.name}" scheduled starting ${input.run_at}, repeating every ${input.interval}`
-          : `One-time task "${input.name}" scheduled for ${input.run_at}`;
+          ? `Recurring job "${input.name}" scheduled starting ${input.run_at}, repeating every ${input.interval}`
+          : `One-time job "${input.name}" scheduled for ${input.run_at}`;
 
         return desc;
       } catch (err) {
-        return `Error scheduling task: ${err.message}`;
+        return `Error scheduling job: ${err.message}`;
       }
     },
   },
 
   {
-    name: "list_tasks",
-    description: "List all scheduled tasks (active and completed).",
+    name: "list_jobs",
+    description: "List all scheduled jobs (active and completed).",
     parameters: {
       type: "object",
       properties: {},
@@ -83,7 +83,7 @@ export const taskTools = [
         const tasks = await context.cronStore.listTasks();
 
         if (tasks.length === 0) {
-          return "No scheduled tasks.";
+          return "No scheduled jobs.";
         }
 
         return tasks
@@ -97,57 +97,64 @@ export const taskTools = [
           )
           .join("\n\n");
       } catch (err) {
-        return `Error listing tasks: ${err.message}`;
+        return `Error listing jobs: ${err.message}`;
       }
     },
   },
 
   {
-    name: "task_toggle",
-    description: "Enable or disable a scheduled task without deleting it.",
+    name: "toggle_job",
+    description: "Enable or disable a scheduled job without deleting it.",
     parameters: {
       type: "object",
       properties: {
-        task_id: { type: "string", description: "The task ID to toggle" },
+        job_id: { type: "string", description: "The job ID to toggle" },
         enabled: { type: "boolean", description: "true to enable, false to disable" },
       },
-      required: ["task_id", "enabled"],
+      required: ["job_id", "enabled"],
     },
     execute: async (input, signal, context) => {
       if (!context?.cronStore) return "Error: cron store not available";
       try {
-        await context.cronStore.toggleTask(input.task_id, input.enabled);
-        return `Task ${input.task_id} ${input.enabled ? 'enabled' : 'disabled'}.`;
+        const task = await context.cronStore.getTask(input.job_id);
+        if (!task) return `Error: job ${input.job_id} not found.`;
+        if (task.name === 'heartbeat') return "Error: cannot modify system jobs.";
+        await context.cronStore.toggleTask(input.job_id, input.enabled);
+        return `Job ${input.job_id} ${input.enabled ? 'enabled' : 'disabled'}.`;
       } catch (err) {
-        return `Error toggling task: ${err.message}`;
+        return `Error toggling job: ${err.message}`;
       }
     },
   },
 
   {
-    name: "cancel_task",
-    description: "Cancel/delete a scheduled task by its ID.",
+    name: "cancel_job",
+    description: "Cancel/delete a scheduled job by its ID.",
     parameters: {
       type: "object",
       properties: {
-        task_id: {
+        job_id: {
           type: "string",
-          description: "The task ID to cancel",
+          description: "The job ID to cancel",
         },
       },
-      required: ["task_id"],
+      required: ["job_id"],
     },
     execute: async (input, signal, context) => {
       if (!context?.cronStore) return "Error: cron store not available";
       try {
-        await context.cronStore.deleteTask(input.task_id);
-        return `Task ${input.task_id} cancelled.`;
+        const task = await context.cronStore.getTask(input.job_id);
+        if (!task) return `Error: job ${input.job_id} not found.`;
+        if (task.name === 'heartbeat') return "Error: cannot modify system jobs.";
+        await context.cronStore.deleteTask(input.job_id);
+        return `Job ${input.job_id} cancelled.`;
       } catch (err) {
-        return `Error cancelling task: ${err.message}`;
+        return `Error cancelling job: ${err.message}`;
       }
     },
   },
 ];
 
-// Backwards compatibility alias
-export const cronTools = taskTools;
+// Backwards compatibility aliases
+export const taskTools = jobTools;
+export const cronTools = jobTools;

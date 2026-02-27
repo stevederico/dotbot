@@ -83,7 +83,15 @@
  */
 
 /**
- * @typedef {TextDeltaEvent|ThinkingEvent|ToolStartEvent|ToolResultEvent|ToolErrorEvent|DoneEvent|MaxIterationsEvent|ErrorEvent|StatsEvent|FollowupEvent} AgentEvent
+ * Image event - generated image from tool
+ * @typedef {Object} ImageEvent
+ * @property {'image'} type
+ * @property {string} url - Image URL
+ * @property {string} prompt - Generation prompt
+ */
+
+/**
+ * @typedef {TextDeltaEvent|ThinkingEvent|ToolStartEvent|ToolResultEvent|ToolErrorEvent|DoneEvent|MaxIterationsEvent|ErrorEvent|StatsEvent|FollowupEvent|ImageEvent} AgentEvent
  */
 
 /**
@@ -180,6 +188,15 @@ export function validateEvent(event) {
     case 'followup':
       if (typeof event.text !== 'string') {
         throw new Error('followup event must have text string');
+      }
+      break;
+
+    case 'image':
+      if (typeof event.url !== 'string') {
+        throw new Error('image event must have url string');
+      }
+      if (typeof event.prompt !== 'string') {
+        throw new Error('image event must have prompt string');
       }
       break;
 

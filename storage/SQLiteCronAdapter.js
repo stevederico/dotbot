@@ -110,20 +110,25 @@ export class SQLiteCronStore extends CronStore {
       const heartbeats = dueTasks.filter(t => t.name === 'heartbeat');
       const others = dueTasks.filter(t => t.name !== 'heartbeat');
 
-      /** Process a single task: fire callback, then update schedule */
+      /** Process a single task: update schedule before firing, then update last_run_at */
       const processTask = async (task) => {
         const mapped = this._rowToTask(task);
+        // Update schedule BEFORE firing to prevent duplicate picks during long-running callbacks
+        if (task.recurring && task.interval_ms) {
+          this.db.prepare(
+            'UPDATE cron_tasks SET next_run_at = ? WHERE id = ?'
+          ).run(now + task.interval_ms, task.id);
+        } else {
+          this.db.prepare(
+            'UPDATE cron_tasks SET enabled = 0 WHERE id = ?'
+          ).run(task.id);
+        }
         try {
           await this.onTaskFire(mapped);
-          if (task.recurring && task.interval_ms) {
-            this.db.prepare(
-              'UPDATE cron_tasks SET next_run_at = ?, last_run_at = ? WHERE id = ?'
-            ).run(now + task.interval_ms, now, task.id);
-          } else {
-            this.db.prepare(
-              'UPDATE cron_tasks SET enabled = 0, last_run_at = ? WHERE id = ?'
-            ).run(now, task.id);
-          }
+          // Update last_run_at after successful completion
+          this.db.prepare(
+            'UPDATE cron_tasks SET last_run_at = ? WHERE id = ?'
+          ).run(Date.now(), task.id);
         } catch (err) {
           console.error(`[cron] error firing task ${task.name}:`, err.message);
         }
@@ -197,7 +202,7 @@ export class SQLiteCronStore extends CronStore {
    */
   async listTasks(sessionId) {
     const rows = this.db.prepare(
-      'SELECT * FROM cron_tasks WHERE session_id = ? ORDER BY next_run_at ASC'
+      "SELECT * FROM cron_tasks WHERE session_id = ? AND name != 'heartbeat' ORDER BY next_run_at ASC"
     ).all(sessionId || 'default');
 
     return rows.map(r => ({
@@ -225,7 +230,7 @@ export class SQLiteCronStore extends CronStore {
     const allIds = [...sessionIds, 'default'];
     const placeholders = allIds.map(() => '?').join(',');
 
-    let query = `SELECT * FROM cron_tasks WHERE session_id IN (${placeholders})`;
+    let query = `SELECT * FROM cron_tasks WHERE session_id IN (${placeholders}) AND name != 'heartbeat'`;
     const params = [...allIds];
 
     if (userId) {
@@ -472,6 +477,23 @@ export class SQLiteCronStore extends CronStore {
       createdAt: new Date(row.created_at),
       lastRunAt: row.last_run_at ? new Date(row.last_run_at) : null,
     };
+  }
+
+  /**
+   * Close the database connection and checkpoint WAL.
+   */
+  close() {
+    this.stop();
+    if (this.db) {
+      try {
+        this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+        this.db.close();
+        this.db = null;
+        console.log('[cron] SQLiteCronStore closed');
+      } catch (err) {
+        console.error('[cron] Error closing database:', err.message);
+      }
+    }
   }
 }
 

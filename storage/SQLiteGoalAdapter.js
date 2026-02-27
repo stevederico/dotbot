@@ -380,4 +380,20 @@ export class SQLiteGoalStore extends GoalStore {
     const doneCount = steps.filter(s => s.done).length;
     return Math.round((doneCount / steps.length) * 100);
   }
+
+  /**
+   * Close the database connection and checkpoint WAL.
+   */
+  close() {
+    if (this.db) {
+      try {
+        this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+        this.db.close();
+        this.db = null;
+        console.log('[goals] SQLiteGoalStore closed');
+      } catch (err) {
+        console.error('[goals] Error closing database:', err.message);
+      }
+    }
+  }
 }

@@ -15,7 +15,7 @@ import { notifyTools } from './notify.js';
 import { browserTools, createBrowserTools } from './browser.js';
 import { goalTools } from './goals.js';
 import { triggerTools } from './triggers.js';
-import { taskTools, cronTools } from './tasks.js';
+import { jobTools, taskTools, cronTools } from './jobs.js';
 import { eventTools } from './events.js';
 import { appgenTools } from './appgen.js';
 
@@ -34,7 +34,7 @@ export const coreTools = [
   ...browserTools,
   ...goalTools,
   ...triggerTools,
-  ...taskTools,
+  ...jobTools,
   ...eventTools,
   ...appgenTools,
 ];
@@ -89,8 +89,9 @@ export {
   createBrowserTools,
   goalTools,
   triggerTools,
-  taskTools,
-  cronTools,  // backwards compatibility alias
+  jobTools,
+  taskTools,   // backwards compatibility alias
+  cronTools,   // backwards compatibility alias
   eventTools,
   appgenTools,
 };

@@ -1,3 +1,16 @@
+0.13.0
+
+  Rename taskTools to jobTools
+  Rename task tools to job tools
+  Add heartbeat protection to toggle/cancel
+  Add heartbeat filter to job queries
+  Fix cron schedule-before-fire
+  Add ImageEvent to SSE events
+  Add image event emission
+  Lazy-load playwright
+  Add close() to SQLite adapters
+  Fix goal ID consistency
+
 0.12.0
 
   Add EventStore interface
