@@ -3,7 +3,16 @@
 // Provides 7 tools: navigate, read_page, click, type, screenshot, extract, close.
 // Uses a singleton Chromium instance with per-user browser contexts (isolated cookies/storage).
 
-import { chromium } from "playwright";
+// Lazy-load playwright to avoid hard dependency at module evaluation time.
+// Consumers that don't use browser tools won't need playwright installed.
+let _chromium = null;
+async function getChromium() {
+  if (!_chromium) {
+    const pw = await import("playwright");
+    _chromium = pw.chromium;
+  }
+  return _chromium;
+}
 import { writeFile, mkdir, readdir, unlink, stat } from "node:fs/promises";
 
 // ── Constants ──
@@ -76,6 +85,7 @@ class BrowserSessionManager {
    */
   async ensureBrowser() {
     if (!this.browser || !this.browser.isConnected()) {
+      const chromium = await getChromium();
       this.browser = await chromium.launch({ headless: true });
       console.log("[browser] Chromium launched");
     }

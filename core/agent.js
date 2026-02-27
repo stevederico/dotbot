@@ -417,6 +417,19 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
           const toolResultEvent = { type: "tool_result", name: tc.name, input: tc.input, result: resultStr };
           validateEvent(toolResultEvent);
           yield toolResultEvent;
+
+          // Check if the result is an image and emit additional image event
+          try {
+            const parsed = JSON.parse(resultStr);
+            if (parsed.type === 'image' && parsed.url) {
+              const imageEvent = { type: 'image', url: parsed.url, prompt: parsed.prompt || '' };
+              validateEvent(imageEvent);
+              yield imageEvent;
+            }
+          } catch {
+            // Not JSON or not an image result, continue
+          }
+
           tc.result = resultStr;
           tc.status = "done";
           logEvent('tool_call', { tool: tc.name, success: true });

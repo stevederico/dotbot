@@ -281,4 +281,20 @@ export class SQLiteEventStore extends EventStore {
       createdAt: row.created_at,
     };
   }
+
+  /**
+   * Close the database connection and checkpoint WAL.
+   */
+  close() {
+    if (this.db) {
+      try {
+        this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+        this.db.close();
+        this.db = null;
+        console.log('[events] SQLiteEventStore closed');
+      } catch (err) {
+        console.error('[events] Error closing database:', err.message);
+      }
+    }
+  }
 }

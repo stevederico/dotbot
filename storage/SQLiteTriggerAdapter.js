@@ -243,4 +243,20 @@ export class SQLiteTriggerStore extends TriggerStore {
       updatedAt: new Date(row.updated_at),
     };
   }
+
+  /**
+   * Close the database connection and checkpoint WAL.
+   */
+  close() {
+    if (this.db) {
+      try {
+        this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+        this.db.close();
+        this.db = null;
+        console.log('[triggers] SQLiteTriggerStore closed');
+      } catch (err) {
+        console.error('[triggers] Error closing database:', err.message);
+      }
+    }
+  }
 }

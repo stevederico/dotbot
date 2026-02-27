@@ -142,7 +142,7 @@ export class MongoCronStore extends CronStore {
 
   async listTasks(sessionId) {
     return await this.collection
-      .find({ sessionId: sessionId || 'default' })
+      .find({ sessionId: sessionId || 'default', name: { $ne: 'heartbeat' } })
       .sort({ nextRunAt: 1 })
       .toArray()
       .then((docs) =>
@@ -161,7 +161,7 @@ export class MongoCronStore extends CronStore {
 
   async listTasksBySessionIds(sessionIds, userId = null) {
     if (!this.collection || sessionIds.length === 0) return [];
-    const query = { sessionId: { $in: [...sessionIds, 'default'] } };
+    const query = { sessionId: { $in: [...sessionIds, 'default'] }, name: { $ne: 'heartbeat' } };
     if (userId) {
       query.$or = [
         { userId: userId },
