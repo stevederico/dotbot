@@ -493,7 +493,7 @@ async function main() {
     process.exit(0);
   }
 
-  if (args.help || args.positionals.length === 0) {
+  if (args.help) {
     printHelp();
     process.exit(0);
   }
