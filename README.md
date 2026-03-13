@@ -12,7 +12,7 @@
       <img src="https://img.shields.io/github/stars/stevederico/dotbot?style=social" alt="GitHub stars">
     </a>
     <a href="https://github.com/stevederico/dotbot">
-      <img src="https://img.shields.io/badge/version-0.16.1-green" alt="version">
+      <img src="https://img.shields.io/badge/version-0.17-green" alt="version">
     </a>
     <img src="https://img.shields.io/badge/LOC-11k-orange" alt="Lines of Code">
   </p>
@@ -40,7 +40,7 @@ A **streaming AI agent** with tool execution, autonomous tasks, and scheduled jo
 
 **As a CLI:**
 ```bash
-dotbot chat "What's the weather in San Francisco?"
+dotbot "What's the weather in San Francisco?"
 dotbot repl
 dotbot serve --port 3000
 ```
@@ -64,7 +64,7 @@ npm install -g @stevederico/dotbot
 export XAI_API_KEY=xai-...
 
 # Chat
-dotbot chat "Summarize the top 3 AI news stories today"
+dotbot "Summarize the top 3 AI news stories today"
 
 # Interactive REPL
 dotbot repl
@@ -99,7 +99,7 @@ for await (const event of agent.chat({
   sessionId: session.id,
   message: 'Search for the latest AI news',
   provider: 'xai',
-  model: 'grok-3',
+  model: 'grok-4-1-fast-reasoning',
 })) {
   if (event.type === 'text_delta') process.stdout.write(event.text);
 }
@@ -126,7 +126,7 @@ for await (const event of agent.chat({
 - **Weather** — Open-Meteo API (no key required)
 
 ### 🔌 **Multi-Provider Support**
-- **xAI Grok** — grok-3, with real-time web search and image generation
+- **xAI Grok** — grok-4-1-fast-reasoning, with real-time web search and image generation
 - **Anthropic Claude** — claude-sonnet-4-5, claude-opus-4, etc.
 - **OpenAI** — gpt-4o, gpt-4-turbo, etc.
 - **Cerebras** — ultra-fast inference
@@ -147,16 +147,16 @@ for await (const event of agent.chat({
 ## CLI Reference
 
 ```
-dotbot v0.16.1 — AI agent CLI
+dotbot v0.17 — AI agent CLI
 
 Usage:
-  dotbot chat "message"       Send a one-shot message
+  dotbot "message"            Send a message (default)
   dotbot repl                 Interactive chat session
   dotbot serve [--port N]     Start HTTP server (default: 3000)
 
 Options:
   --provider, -p   AI provider: xai, anthropic, openai, ollama (default: xai)
-  --model, -m      Model name (default: grok-3)
+  --model, -m      Model name (default: grok-4-1-fast-reasoning)
   --db             SQLite database path (default: ./dotbot.db)
   --port           Server port for 'serve' command
   --help, -h       Show help
@@ -202,7 +202,7 @@ for await (const event of agent.chat({
   sessionId: 'sess_123',
   message: 'Hello',
   provider: 'xai',
-  model: 'grok-3',
+  model: 'grok-4-1-fast-reasoning',
   signal: abortController.signal,  // optional
   context: { userID: 'user123' },  // passed to tools
 })) {
@@ -260,7 +260,7 @@ await agent.chat({
   message: `Create a task to audit our API endpoints.
             Break it into 5 steps, use auto mode.`,
   provider: 'xai',
-  model: 'grok-3',
+  model: 'grok-4-1-fast-reasoning',
   context: { userID: 'user-123' },
 });
 // Step 1 runs → schedules Step 2 → ... → task complete

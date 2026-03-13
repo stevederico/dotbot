@@ -1,3 +1,11 @@
+0.17
+
+  Default model grok-4-1-fast-reasoning
+  Show thinking stream
+  Remove chat keyword requirement
+  Suppress SQLite warning
+  Fix store init signatures
+
 0.16.1
 
   Fix store init signatures
