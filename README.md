@@ -7,7 +7,7 @@ dotbot-sdk is a framework-agnostic SDK that provides the core primitives for bui
 It is the engine — not the application. You bring the server, the auth, the HTTP routes. dotbot-sdk handles everything below that.
 
 **Repository:** [github.com/stevederico/dotbot](https://github.com/stevederico/dotbot)
-**Package:** `@dottie/agent`
+**Package:** `dotbot`
 
 ---
 
@@ -57,7 +57,7 @@ Your Application (Hono, Express, Fastify, Deno, etc.)
 
 ```bash
 # npm
-npm install @dottie/agent
+npm install dotbot
 
 # From local path (development)
 npm install file:/path/to/dotbot
@@ -72,7 +72,7 @@ import {
   createAgent,
   SQLiteSessionStore,
   coreTools
-} from '@dottie/agent';
+} from 'dotbot';
 
 // Initialize storage
 const sessionStore = new SQLiteSessionStore();
@@ -116,7 +116,7 @@ for await (const event of agent.chat({
 ## Package Structure
 
 ```
-@dottie/agent/
+dotbot/
 ├── index.js              # Main exports — createAgent() and all public APIs
 ├── core/
 │   ├── agent.js          # Agent loop (async generator, streams SSE events)
@@ -155,11 +155,11 @@ When importing from subpaths, omit the `.js` extension:
 
 ```javascript
 // ✅ Correct
-import { agentLoop } from '@dottie/agent/core/agent';
-import { toProviderFormat } from '@dottie/agent/core/normalize';
+import { agentLoop } from 'dotbot/core/agent';
+import { toProviderFormat } from 'dotbot/core/normalize';
 
 // ❌ Wrong (causes "module not found")
-import { agentLoop } from '@dottie/agent/core/agent.js';
+import { agentLoop } from 'dotbot/core/agent.js';
 ```
 
 ---
@@ -176,7 +176,7 @@ import {
   MongoTaskStore,
   MongoTriggerStore,
   coreTools
-} from '@dottie/agent';
+} from 'dotbot';
 import { MongoClient } from 'mongodb';
 
 const client = await MongoClient.connect(process.env.MONGODB_URL);
@@ -400,7 +400,7 @@ import {
   extractVisualPrompt,
   generateImageFromText,
   GROK_IMAGINE_MODEL
-} from '@dottie/agent/tools/images';
+} from 'dotbot/tools/images';
 
 // Direct image generation
 const result = await generateImage('A sunset over mountains', apiKey);
@@ -421,7 +421,7 @@ import {
   cleanGeneratedCode,
   validateGeneratedCode,
   extractAppName
-} from '@dottie/agent/tools/appgen';
+} from 'dotbot/tools/appgen';
 
 // Use the system prompt directly
 const messages = [
@@ -529,7 +529,7 @@ for (const trigger of triggers) {
 Messages are stored in a canonical standard format and converted to provider-specific wire format just-in-time before each API call. This means you can switch providers without reformatting stored history.
 
 ```javascript
-import { toStandardFormat, toProviderFormat } from '@dottie/agent/core/normalize';
+import { toStandardFormat, toProviderFormat } from 'dotbot/core/normalize';
 
 // Normalize any provider's raw messages to standard format
 const standard = toStandardFormat(rawMessages);
@@ -567,7 +567,7 @@ Provider failover is automatic — if the primary fails (rate limit, error, time
 
 Each provider config includes an `envKey` field for environment variable lookup:
 ```javascript
-import { AI_PROVIDERS } from '@dottie/agent';
+import { AI_PROVIDERS } from 'dotbot';
 
 // AI_PROVIDERS.anthropic.envKey === 'ANTHROPIC_API_KEY'
 // AI_PROVIDERS.xai.envKey === 'XAI_API_KEY'
@@ -581,7 +581,7 @@ const apiKey = process.env[AI_PROVIDERS[providerId].envKey];
 ```javascript
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
-import { createAgent, SQLiteSessionStore, coreTools } from '@dottie/agent';
+import { createAgent, SQLiteSessionStore, coreTools } from 'dotbot';
 
 const app = new Hono();
 
@@ -693,7 +693,7 @@ function useAgentChat(sessionId) {
 Implement the `SessionStore` interface for any database:
 
 ```javascript
-import { SessionStore } from '@dottie/agent';
+import { SessionStore } from 'dotbot';
 
 class PostgresSessionStore extends SessionStore {
   constructor(pool) {

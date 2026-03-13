@@ -1,3 +1,7 @@
+0.14.1
+
+  Rename package to dotbot
+
 0.14.0
 
   Rename Goal to Task throughout

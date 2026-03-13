@@ -1,7 +1,7 @@
 {
-  "name": "@dottie/agent",
-  "version": "0.14.0",
-  "description": "Framework-agnostic AI agent system with tool execution, session management, and scheduled tasks",
+  "name": "dotbot",
+  "version": "0.14.1",
+  "description": "AI agent library for Node.js — streaming, multi-provider, tool execution, autonomous tasks",
   "type": "module",
   "main": "index.js",
   "exports": {
