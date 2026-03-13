@@ -1,3 +1,7 @@
+0.22
+
+  Simplify CLI, no args for interactive
+
 0.21
 
   Fix spinner overlap bug
