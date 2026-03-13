@@ -1,3 +1,9 @@
+0.16.1
+
+  Fix store init signatures
+  Fix cron table creation order
+  Standardize init(dbPath) API
+
 0.16.0
 
   Rename to @stevederico/dotbot

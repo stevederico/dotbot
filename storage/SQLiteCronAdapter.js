@@ -34,20 +34,7 @@ export class SQLiteCronStore extends CronStore {
     this.db = new DatabaseSync(dbPath);
     this.onTaskFire = options.onTaskFire || null;
 
-    // Migration: goal_id → task_id column
-    const cols = this.db.prepare("PRAGMA table_info(cron_tasks)").all();
-    if (cols.some(c => c.name === 'goal_id') && !cols.some(c => c.name === 'task_id')) {
-      console.log('[cron] migrating goal_id column to task_id...');
-      this.db.exec('ALTER TABLE cron_tasks RENAME COLUMN goal_id TO task_id');
-    }
-
-    // Migration: goal_step → task_step task type
-    const goalStepCount = this.db.prepare("SELECT COUNT(*) as cnt FROM cron_tasks WHERE name = 'goal_step'").get();
-    if (goalStepCount && goalStepCount.cnt > 0) {
-      console.log('[cron] migrating goal_step tasks to task_step...');
-      this.db.prepare("UPDATE cron_tasks SET name = 'task_step' WHERE name = 'goal_step'").run();
-    }
-
+    // Create table first
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS cron_tasks (
         id TEXT PRIMARY KEY,
@@ -70,6 +57,20 @@ export class SQLiteCronStore extends CronStore {
       CREATE INDEX IF NOT EXISTS idx_cron_next_run ON cron_tasks(next_run_at);
       CREATE INDEX IF NOT EXISTS idx_cron_session ON cron_tasks(session_id);
     `);
+
+    // Migration: goal_id → task_id column
+    const cols = this.db.prepare("PRAGMA table_info(cron_tasks)").all();
+    if (cols.some(c => c.name === 'goal_id') && !cols.some(c => c.name === 'task_id')) {
+      console.log('[cron] migrating goal_id column to task_id...');
+      this.db.exec('ALTER TABLE cron_tasks RENAME COLUMN goal_id TO task_id');
+    }
+
+    // Migration: goal_step → task_step task type
+    const goalStepCount = this.db.prepare("SELECT COUNT(*) as cnt FROM cron_tasks WHERE name = 'goal_step'").get();
+    if (goalStepCount && goalStepCount.cnt > 0) {
+      console.log('[cron] migrating goal_step tasks to task_step...');
+      this.db.prepare("UPDATE cron_tasks SET name = 'task_step' WHERE name = 'goal_step'").run();
+    }
 
     // Deduplicate existing heartbeats before relying on the unique index
     const dupes = this.db.prepare(`
