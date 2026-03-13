@@ -1,5 +1,11 @@
-import { ObjectId } from 'mongodb';
 import { TriggerStore } from './TriggerStore.js';
+
+// Lazy-load mongodb to avoid hard dependency at module evaluation time
+let _ObjectId = null;
+async function getObjectId() {
+  if (!_ObjectId) { _ObjectId = (await import('mongodb')).ObjectId; }
+  return _ObjectId;
+}
 
 /**
  * MongoDB implementation of TriggerStore
@@ -111,6 +117,7 @@ export class MongoTriggerStore extends TriggerStore {
    * Toggle a trigger on/off
    */
   async toggleTrigger(userId, triggerId, enabled) {
+    const ObjectId = await getObjectId();
     const result = await this.collection.updateOne(
       { _id: new ObjectId(triggerId), userId },
       {
@@ -127,6 +134,7 @@ export class MongoTriggerStore extends TriggerStore {
    * Delete a trigger
    */
   async deleteTrigger(userId, triggerId) {
+    const ObjectId = await getObjectId();
     const result = await this.collection.deleteOne({
       _id: new ObjectId(triggerId),
       userId,
@@ -138,6 +146,7 @@ export class MongoTriggerStore extends TriggerStore {
    * Record that a trigger has fired
    */
   async markTriggerFired(triggerId) {
+    const ObjectId = await getObjectId();
     await this.collection.updateOne(
       { _id: new ObjectId(triggerId) },
       {

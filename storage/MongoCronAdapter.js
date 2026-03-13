@@ -121,7 +121,7 @@ export class MongoCronStore extends CronStore {
     }
   }
 
-  async createTask({ name, prompt, sessionId, userId, runAt, intervalMs, recurring, goalId }) {
+  async createTask({ name, prompt, sessionId, userId, runAt, intervalMs, recurring, taskId }) {
     const task = {
       name,
       prompt,
@@ -134,7 +134,7 @@ export class MongoCronStore extends CronStore {
       lastRunAt: null,
     };
     if (userId) task.userId = userId;
-    if (goalId) task.goalId = goalId;
+    if (taskId) task.taskId = taskId;
 
     const result = await this.collection.insertOne(task);
     return { id: result.insertedId, ...task };

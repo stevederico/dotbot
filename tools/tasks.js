@@ -1,18 +1,18 @@
 /**
- * Goal Management Tools
+ * Task Management Tools
  *
- * Multi-step autonomous goal execution with progress tracking.
- * Goals can run in auto mode where steps execute sequentially via cron.
+ * Multi-step autonomous task execution with progress tracking.
+ * Tasks can run in auto mode where steps execute sequentially via cron.
  */
 
 /** Delay (ms) before scheduling the next auto-mode step via cron. */
 const AUTO_STEP_DELAY_MS = 5 * 1000; // 5 seconds between auto steps
 
-export const goalTools = [
+export const taskTools = [
   {
-    name: "goal_create",
+    name: "task_create",
     description:
-      "Create a new goal with optional steps, priority, deadline, and category. " +
+      "Create a new task with optional steps, priority, deadline, and category. " +
       "Use mode='auto' for autonomous execution where steps run sequentially without user prompting.",
     parameters: {
       type: "object",
@@ -24,7 +24,7 @@ export const goalTools = [
         steps: {
           type: "array",
           items: { type: "string" },
-          description: "Optional list of step descriptions to break the goal into subtasks",
+          description: "Optional list of step descriptions to break the task into subtasks",
         },
         category: {
           type: "string",
@@ -47,9 +47,9 @@ export const goalTools = [
       required: ["description"],
     },
     execute: async (input, signal, context) => {
-      if (!context?.goalStore) return "Error: goalStore not available";
+      if (!context?.taskStore) return "Error: taskStore not available";
       try {
-        const goal = await context.goalStore.createGoal({
+        const task = await context.taskStore.createTask({
           userId: context.userID,
           description: input.description,
           steps: input.steps || [],
@@ -59,21 +59,21 @@ export const goalTools = [
           mode: input.mode || 'auto',
         });
 
-        const goalId = goal.id || goal._id?.toString();
+        const taskId = task.id || task._id?.toString();
 
-        return `Goal created: "${input.description}" (ID: ${goalId})\n` +
-               `Mode: ${goal.mode}, Priority: ${goal.priority}, Steps: ${goal.steps.length}` +
-               (goal.mode === 'auto' && goal.steps.length > 0 ?
-                 `\n\nCall goal_work with goal_id "${goalId}" to start executing steps automatically.` : '');
+        return `Task created: "${input.description}" (ID: ${taskId})\n` +
+               `Mode: ${task.mode}, Priority: ${task.priority}, Steps: ${task.steps.length}` +
+               (task.mode === 'auto' && task.steps.length > 0 ?
+                 `\n\nCall task_work with task_id "${taskId}" to start executing steps automatically.` : '');
       } catch (err) {
-        return `Error creating goal: ${err.message}`;
+        return `Error creating task: ${err.message}`;
       }
     },
   },
 
   {
-    name: "goal_list",
-    description: "List all goals for the user, optionally filtered by status or category.",
+    name: "task_list",
+    description: "List all tasks for the user, optionally filtered by status or category.",
     parameters: {
       type: "object",
       properties: {
@@ -89,42 +89,42 @@ export const goalTools = [
       },
     },
     execute: async (input, signal, context) => {
-      if (!context?.goalStore) return "Error: goalStore not available";
+      if (!context?.taskStore) return "Error: taskStore not available";
       try {
         const filters = {};
         if (input.status) filters.status = input.status;
         if (input.category) filters.category = input.category;
 
-        const goals = await context.goalStore.getGoals(context.userID, filters);
+        const tasks = await context.taskStore.getTasks(context.userID, filters);
 
-        if (goals.length === 0) {
+        if (tasks.length === 0) {
           return input.status || input.category
-            ? `No goals found matching filters.`
-            : `No goals yet. Create one with goal_create.`;
+            ? `No tasks found matching filters.`
+            : `No tasks yet. Create one with task_create.`;
         }
 
-        return goals.map((g, i) => {
-          const goalId = g.id || g._id?.toString();
+        return tasks.map((g, i) => {
+          const taskId = g.id || g._id?.toString();
           const doneCount = g.steps?.filter(s => s.done).length || 0;
           const totalSteps = g.steps?.length || 0;
           const progress = totalSteps > 0 ? `${doneCount}/${totalSteps} steps` : 'No steps';
           const status = g.status === 'completed' ? '✓' : g.status === 'in_progress' ? '▶' : '○';
-          return `${status} [${goalId}] ${g.description} [${g.priority}] - ${progress} (${g.progress}%)`;
+          return `${status} [${taskId}] ${g.description} [${g.priority}] - ${progress} (${g.progress}%)`;
         }).join('\n');
       } catch (err) {
-        return `Error listing goals: ${err.message}`;
+        return `Error listing tasks: ${err.message}`;
       }
     },
   },
 
   {
-    name: "goal_plan",
+    name: "task_plan",
     description:
-      "Break down a goal into detailed steps with action prompts. Use this to add or replace steps on an existing goal.",
+      "Break down a task into detailed steps with action prompts. Use this to add or replace steps on an existing task.",
     parameters: {
       type: "object",
       properties: {
-        goal_id: { type: "string", description: "The goal ID" },
+        task_id: { type: "string", description: "The task ID" },
         steps: {
           type: "array",
           items: {
@@ -138,13 +138,13 @@ export const goalTools = [
           description: "Array of step objects with text and optional action prompts",
         },
       },
-      required: ["goal_id", "steps"],
+      required: ["task_id", "steps"],
     },
     execute: async (input, signal, context) => {
-      if (!context?.goalStore) return "Error: goalStore not available";
+      if (!context?.taskStore) return "Error: taskStore not available";
       try {
-        const goal = await context.goalStore.getGoal(context.userID, input.goal_id);
-        if (!goal) return "Goal not found.";
+        const task = await context.taskStore.getTask(context.userID, input.task_id);
+        if (!task) return "Task not found.";
 
         const normalizedSteps = input.steps.map(s => ({
           text: s.text,
@@ -155,7 +155,7 @@ export const goalTools = [
           completedAt: null,
         }));
 
-        await context.goalStore.updateGoal(context.userID, input.goal_id, {
+        await context.taskStore.updateTask(context.userID, input.task_id, {
           steps: normalizedSteps,
           mode: "auto",
           status: "in_progress",
@@ -163,58 +163,58 @@ export const goalTools = [
         });
 
         const stepList = normalizedSteps.map((s, i) => `  ${i + 1}. ${s.text}`).join("\n");
-        return `Goal planned with ${normalizedSteps.length} steps and set to auto mode:\n${stepList}\n\nCall goal_work with goal_id "${input.goal_id}" to start executing the first step.`;
+        return `Task planned with ${normalizedSteps.length} steps and set to auto mode:\n${stepList}\n\nCall task_work with task_id "${input.task_id}" to start executing the first step.`;
       } catch (err) {
-        return `Error planning goal: ${err.message}`;
+        return `Error planning task: ${err.message}`;
       }
     },
   },
 
   {
-    name: "goal_work",
+    name: "task_work",
     description:
-      "Start executing the next pending step on a goal. Returns the step's action prompt. " +
-      "After completing the action, call goal_step_done to record the result.",
+      "Start executing the next pending step on a task. Returns the step's action prompt. " +
+      "After completing the action, call task_step_done to record the result.",
     parameters: {
       type: "object",
       properties: {
-        goal_id: { type: "string", description: "The goal ID to work on" },
+        task_id: { type: "string", description: "The task ID to work on" },
       },
-      required: ["goal_id"],
+      required: ["task_id"],
     },
     execute: async (input, signal, context) => {
-      if (!context?.goalStore) return "Error: goalStore not available";
+      if (!context?.taskStore) return "Error: taskStore not available";
       try {
-        const goal = await context.goalStore.getGoal(context.userID, input.goal_id);
-        if (!goal) return "Goal not found.";
-        if (!goal.steps || goal.steps.length === 0) {
-          return "Goal has no steps. Use goal_plan to add steps first.";
+        const task = await context.taskStore.getTask(context.userID, input.task_id);
+        if (!task) return "Task not found.";
+        if (!task.steps || task.steps.length === 0) {
+          return "Task has no steps. Use task_plan to add steps first.";
         }
 
         // Find next undone step
-        const stepIdx = goal.steps.findIndex(s => !s.done);
+        const stepIdx = task.steps.findIndex(s => !s.done);
         if (stepIdx === -1) {
-          return "All steps are already complete. Use goal_complete to finish the goal.";
+          return "All steps are already complete. Use task_complete to finish the task.";
         }
 
-        const step = goal.steps[stepIdx];
+        const step = task.steps[stepIdx];
 
         // Mark step as started
-        const steps = [...goal.steps];
+        const steps = [...task.steps];
         steps[stepIdx] = { ...steps[stepIdx], startedAt: new Date().toISOString() };
 
-        await context.goalStore.updateGoal(context.userID, input.goal_id, {
+        await context.taskStore.updateTask(context.userID, input.task_id, {
           steps,
           currentStep: stepIdx,
           lastWorkedAt: new Date().toISOString(),
           status: "in_progress",
         });
 
-        const progress = `Step ${stepIdx + 1} of ${goal.steps.length}`;
+        const progress = `Step ${stepIdx + 1} of ${task.steps.length}`;
         return (
           `[${progress}] "${step.text}"\n\n` +
           `Action: ${step.action || step.text}\n\n` +
-          `Execute this action now, then call goal_step_done with goal_id "${input.goal_id}" and a result summary.`
+          `Execute this action now, then call task_step_done with task_id "${input.task_id}" and a result summary.`
         );
       } catch (err) {
         return `Error starting work: ${err.message}`;
@@ -223,29 +223,29 @@ export const goalTools = [
   },
 
   {
-    name: "goal_step_done",
+    name: "task_step_done",
     description:
       "Mark the current in-progress step as completed and record its result. " +
-      "If the goal is in auto mode and more steps remain, schedules the next step via cron.",
+      "If the task is in auto mode and more steps remain, schedules the next step via cron.",
     parameters: {
       type: "object",
       properties: {
-        goal_id: { type: "string", description: "The goal ID" },
+        task_id: { type: "string", description: "The task ID" },
         result: { type: "string", description: "Summary of what was accomplished in this step" },
       },
-      required: ["goal_id", "result"],
+      required: ["task_id", "result"],
     },
     execute: async (input, signal, context) => {
-      if (!context?.goalStore) return "Error: goalStore not available";
+      if (!context?.taskStore) return "Error: taskStore not available";
       try {
-        const goal = await context.goalStore.getGoal(context.userID, input.goal_id);
-        if (!goal) return "Goal not found.";
+        const task = await context.taskStore.getTask(context.userID, input.task_id);
+        if (!task) return "Task not found.";
 
         // Find the current in-progress step
-        const stepIdx = goal.steps.findIndex(s => s.startedAt && !s.done);
-        if (stepIdx === -1) return "No in-progress step found. Call goal_work first.";
+        const stepIdx = task.steps.findIndex(s => s.startedAt && !s.done);
+        if (stepIdx === -1) return "No in-progress step found. Call task_work first.";
 
-        const steps = [...goal.steps];
+        const steps = [...task.steps];
         steps[stepIdx] = {
           ...steps[stepIdx],
           done: true,
@@ -266,31 +266,31 @@ export const goalTools = [
           updates.status = "completed";
         }
 
-        await context.goalStore.updateGoal(context.userID, input.goal_id, updates);
+        await context.taskStore.updateTask(context.userID, input.task_id, updates);
 
         // In auto mode with remaining steps, schedule next step via cron
-        if (!allDone && goal.mode === "auto" && context.cronStore) {
+        if (!allDone && task.mode === "auto" && context.cronStore) {
           try {
             await context.cronStore.createTask({
-              name: "goal_step",
-              prompt: `Continue working on goal ${input.goal_id}. Execute the next pending step.`,
+              name: "task_step",
+              prompt: `Continue working on task ${input.task_id}. Execute the next pending step.`,
               userId: context.userID,
               sessionId: context.sessionId,
               runAt: new Date(Date.now() + AUTO_STEP_DELAY_MS).toISOString(),
-              goalId: input.goal_id,
+              taskId: input.task_id,
             });
           } catch (err) {
-            console.error("[goals] failed to schedule next step:", err.message);
+            console.error("[tasks] failed to schedule next step:", err.message);
           }
         }
 
         const doneCount = steps.filter(s => s.done).length;
         if (allDone) {
-          return `Step ${stepIdx + 1} completed. All ${steps.length} steps done — goal marked as completed!`;
+          return `Step ${stepIdx + 1} completed. All ${steps.length} steps done — task marked as completed!`;
         }
         return (
           `Step ${stepIdx + 1} completed (${doneCount}/${steps.length}).` +
-          (goal.mode === "auto" ? " Next step scheduled automatically." : " Call goal_work to continue.")
+          (task.mode === "auto" ? " Next step scheduled automatically." : " Call task_work to continue.")
         );
       } catch (err) {
         return `Error completing step: ${err.message}`;
@@ -299,58 +299,58 @@ export const goalTools = [
   },
 
   {
-    name: "goal_complete",
-    description: "Mark a goal as completed.",
+    name: "task_complete",
+    description: "Mark a task as completed.",
     parameters: {
       type: "object",
       properties: {
-        goal_id: { type: "string", description: "The goal ID to complete" },
+        task_id: { type: "string", description: "The task ID to complete" },
       },
-      required: ["goal_id"],
+      required: ["task_id"],
     },
     execute: async (input, signal, context) => {
-      if (!context?.goalStore) return "Error: goalStore not available";
+      if (!context?.taskStore) return "Error: taskStore not available";
       try {
-        const result = await context.goalStore.updateGoal(
+        const result = await context.taskStore.updateTask(
           context.userID,
-          input.goal_id,
+          input.task_id,
           { status: "completed" }
         );
 
-        if (result.modifiedCount > 0) {
-          return `Goal ${input.goal_id} marked as completed.`;
+        if (result.modifiedCount > 0 || result.changes > 0) {
+          return `Task ${input.task_id} marked as completed.`;
         }
-        return "Goal not found.";
+        return "Task not found.";
       } catch (err) {
-        return `Error completing goal: ${err.message}`;
+        return `Error completing task: ${err.message}`;
       }
     },
   },
 
   {
-    name: "goal_delete",
-    description: "Delete a goal permanently.",
+    name: "task_delete",
+    description: "Delete a task permanently.",
     parameters: {
       type: "object",
       properties: {
-        goal_id: { type: "string", description: "The goal ID to delete" },
+        task_id: { type: "string", description: "The task ID to delete" },
       },
-      required: ["goal_id"],
+      required: ["task_id"],
     },
     execute: async (input, signal, context) => {
-      if (!context?.goalStore) return "Error: goalStore not available";
+      if (!context?.taskStore) return "Error: taskStore not available";
       try {
-        const result = await context.goalStore.deleteGoal(context.userID, input.goal_id);
-        return result.deletedCount > 0 ? `Goal ${input.goal_id} deleted.` : "Goal not found.";
+        const result = await context.taskStore.deleteTask(context.userID, input.task_id);
+        return (result.deletedCount > 0 || result.changes > 0) ? `Task ${input.task_id} deleted.` : "Task not found.";
       } catch (err) {
-        return `Error deleting goal: ${err.message}`;
+        return `Error deleting task: ${err.message}`;
       }
     },
   },
 
   {
-    name: "goal_search",
-    description: "Search goals by text in description or steps.",
+    name: "task_search",
+    description: "Search tasks by text in description or steps.",
     parameters: {
       type: "object",
       properties: {
@@ -359,31 +359,31 @@ export const goalTools = [
       required: ["query"],
     },
     execute: async (input, signal, context) => {
-      if (!context?.goalStore) return "Error: goalStore not available";
+      if (!context?.taskStore) return "Error: taskStore not available";
       try {
-        const goals = await context.goalStore.searchGoals(context.userID, input.query);
-        if (goals.length === 0) return `No goals matching "${input.query}".`;
-        return goals.map((g, i) => {
+        const tasks = await context.taskStore.searchTasks(context.userID, input.query);
+        if (tasks.length === 0) return `No tasks matching "${input.query}".`;
+        return tasks.map((g, i) => {
           const progress = `${g.progress}%`;
           return `${i + 1}. ${g.description} [${g.category}] - ${progress}`;
         }).join('\n');
       } catch (err) {
-        return `Error searching goals: ${err.message}`;
+        return `Error searching tasks: ${err.message}`;
       }
     },
   },
 
   {
-    name: "goal_stats",
-    description: "Get goal statistics (total, completed, in progress, by category, etc.).",
+    name: "task_stats",
+    description: "Get task statistics (total, completed, in progress, by category, etc.).",
     parameters: {
       type: "object",
       properties: {},
     },
     execute: async (input, signal, context) => {
-      if (!context?.goalStore) return "Error: goalStore not available";
+      if (!context?.taskStore) return "Error: taskStore not available";
       try {
-        const stats = await context.goalStore.getGoalStats(context.userID);
+        const stats = await context.taskStore.getTaskStats(context.userID);
         let output = `Total: ${stats.total}, Pending: ${stats.pending}, In Progress: ${stats.in_progress}, Completed: ${stats.completed}`;
         if (stats.overdue > 0) output += `, Overdue: ${stats.overdue}`;
         if (Object.keys(stats.by_category).length > 0) {
@@ -399,3 +399,6 @@ export const goalTools = [
     },
   },
 ];
+
+// Backwards compatibility: export goalTools as alias
+export const goalTools = taskTools;

@@ -2,7 +2,7 @@
 
 **The AI agent engine for Node.js applications.**
 
-dotbot-sdk is a framework-agnostic SDK that provides the core primitives for building AI agent systems: a streaming agent loop, pluggable storage, a composable tool registry, and orchestration for goals, triggers, and scheduled tasks.
+dotbot-sdk is a framework-agnostic SDK that provides the core primitives for building AI agent systems: a streaming agent loop, pluggable storage, a composable tool registry, and orchestration for tasks, triggers, and scheduled jobs.
 
 It is the engine — not the application. You bring the server, the auth, the HTTP routes. dotbot-sdk handles everything below that.
 
@@ -25,7 +25,7 @@ Your Application (Hono, Express, Fastify, Deno, etc.)
    │  Tool Registry       47 built-in tools     │
    │  SessionStore        pluggable adapters     │
    │  CronStore           scheduled tasks        │
-   │  GoalStore           multi-step execution   │
+   │  TaskStore           multi-step execution   │
    │  TriggerStore        event-driven triggers  │
    └────────────────────────────────────────────┘
         │
@@ -42,9 +42,9 @@ Your Application (Hono, Express, Fastify, Deno, etc.)
 - **Provider failover** — Automatic retry on alternate provider if primary fails
 - **Database-agnostic** — Abstract store interfaces with MongoDB and SQLite adapters included
 - **Streaming-first** — `agent.chat()` is an async generator yielding typed SSE events (`text_delta`, `tool_start`, `tool_result`, `thinking`, `done`, `stats`)
-- **47 built-in tools** — Memory, web search, browser automation, file I/O, image generation, weather, goals, triggers, cron, and more
+- **47 built-in tools** — Memory, web search, browser automation, file I/O, image generation, weather, tasks, triggers, jobs, and more
 - **Custom tools** — Register any tool with a simple `{ name, description, parameters, execute }` object
-- **Goal system** — Multi-step autonomous workflows with priority, deadline, and auto-execution mode
+- **Task system** — Multi-step autonomous workflows with priority, deadline, and auto-execution mode
 - **Event-driven triggers** — React to application events with agent responses, with cooldown control
 - **Scheduled tasks** — Agent-callable cron with interval strings (`1d`, `30m`) and recurring heartbeats
 - **Message normalization** — Canonical message format stored once, converted to provider wire format just-in-time
@@ -132,7 +132,7 @@ for await (const event of agent.chat({
 │   ├── SQLiteAdapter.js  # SQLite session adapter (Node.js 22.5+, zero deps)
 │   ├── MemoryStore.js    # In-memory adapter (dev/testing)
 │   ├── CronStore.js      # Abstract cron interface
-│   ├── GoalStore.js      # Abstract goal interface
+│   ├── TaskStore.js      # Abstract task interface
 │   ├── TriggerStore.js   # Abstract trigger interface
 │   └── Mongo*.js         # MongoDB adapters for all stores
 ├── tools/                # 47 built-in tools across 13 categories
@@ -141,9 +141,9 @@ for await (const event of agent.chat({
 │   ├── browser.js        # Playwright browser automation
 │   ├── images.js         # Image generation + shared helpers
 │   ├── appgen.js         # App generation tools + shared helpers
-│   ├── goals.js          # Multi-step goal execution
+│   ├── tasks.js          # Multi-step task execution
 │   ├── triggers.js       # Event-driven trigger management
-│   ├── tasks.js          # Scheduled task management
+│   ├── jobs.js           # Scheduled job management
 │   └── ...
 └── utils/
     └── providers.js      # Provider configurations (Anthropic, OpenAI, xAI, Ollama)
@@ -173,7 +173,7 @@ import {
   createAgent,
   MongoSessionStore,
   MongoCronStore,
-  MongoGoalStore,
+  MongoTaskStore,
   MongoTriggerStore,
   coreTools
 } from '@dottie/agent';
@@ -199,8 +199,8 @@ await cronStore.init(db, {
   },
 });
 
-const goalStore = new MongoGoalStore();
-await goalStore.init(db);
+const taskStore = new MongoTaskStore();
+await taskStore.init(db);
 
 const triggerStore = new MongoTriggerStore();
 await triggerStore.init(db);
@@ -208,7 +208,7 @@ await triggerStore.init(db);
 const agent = createAgent({
   sessionStore,
   cronStore,
-  goalStore,
+  taskStore,
   triggerStore,
   providers: {
     anthropic: { apiKey: process.env.ANTHROPIC_API_KEY },
@@ -239,7 +239,7 @@ createAgent({
   tools?:              Tool[],                   // defaults to coreTools (47 tools)
   systemPrompt?:       (name, personality, timestamp) => string,
   cronStore?:          CronStore,
-  goalStore?:          GoalStore,
+  taskStore?:          TaskStore,
   triggerStore?:       TriggerStore,
   memoryStore?:        SQLiteMemoryStore,
   screenshotUrlPattern?: (filename: string) => string,
@@ -259,7 +259,7 @@ Returns an agent API object:
   async clearSession(sessionId): Promise<void>,
   getTools(): Tool[],
   getCronStore(): CronStore | null,
-  getGoalStore(): GoalStore | null,
+  getTaskStore(): TaskStore | null,
   getTriggerStore(): TriggerStore | null,
   getMemoryStore(): SQLiteMemoryStore | null,
 }
@@ -373,14 +373,14 @@ class SessionStore {
 ### Browser (7)
 `browser_navigate`, `browser_read_page`, `browser_click`, `browser_type`, `browser_screenshot`, `browser_extract`, `browser_close`
 
-### Goals (9)
-`goal_create`, `goal_list`, `goal_plan`, `goal_work`, `goal_step_done`, `goal_complete`, `goal_delete`, `goal_search`, `goal_stats`
+### Tasks (9)
+`task_create`, `task_list`, `task_plan`, `task_work`, `task_step_done`, `task_complete`, `task_delete`, `task_search`, `task_stats`
 
 ### Triggers (4)
 `trigger_create`, `trigger_list`, `trigger_toggle`, `trigger_delete`
 
-### Cron (1+)
-`schedule_task` — Agent-callable scheduled task creation
+### Jobs (4)
+`schedule_job`, `list_jobs`, `cancel_job`, `toggle_job` — Agent-callable scheduled job management
 
 ### App Generation (2)
 `app_generate` — Generate React components from natural language prompts
@@ -470,15 +470,15 @@ The `context` object passed to `execute()` is the same object you pass to `agent
 
 ---
 
-## Goal System
+## Task System
 
-Goals enable multi-step autonomous workflows. In `auto` mode the agent executes steps sequentially, scheduling each next step via CronStore automatically.
+Tasks enable multi-step autonomous workflows. In `auto` mode the agent executes steps sequentially, scheduling each next step via CronStore automatically.
 
 ```javascript
-// The agent creates the goal and drives execution
+// The agent creates the task and drives execution
 for await (const event of agent.chat({
   sessionId,
-  message: `Create a goal to audit our API endpoints and produce a security report.
+  message: `Create a task to audit our API endpoints and produce a security report.
             Use 5 steps, auto mode.`,
   provider: 'anthropic',
   model:    'claude-sonnet-4-5',
@@ -486,10 +486,10 @@ for await (const event of agent.chat({
 })) {
   console.log(event);
 }
-// Step 1 runs → schedules Step 2 → ... → goal marked complete
+// Step 1 runs → schedules Step 2 → ... → task marked complete
 ```
 
-**Requires:** `goalStore` and `cronStore` passed to `createAgent()`.
+**Requires:** `taskStore` and `cronStore` passed to `createAgent()`.
 
 ---
 

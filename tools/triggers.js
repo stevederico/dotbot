@@ -17,7 +17,7 @@ export const triggerTools = [
       properties: {
         eventType: {
           type: "string",
-          description: "Event type (user-defined string). Examples: session_start, goal_completed, error_occurred, data_updated, task_completed, or any custom event",
+          description: "Event type (user-defined string). Examples: app_opened, goal_completed, error_occurred, data_updated, task_completed, or any custom event",
         },
         prompt: {
           type: "string",

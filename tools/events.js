@@ -18,7 +18,7 @@ export const eventTools = [
         type: {
           type: "string",
           description:
-            "Event type filter: message_sent, message_received, tool_call, goal_created, goal_completed, trigger_fired",
+            "Event type filter: message_sent, message_received, tool_call, task_created, task_completed, trigger_fired",
         },
         startDate: {
           type: "string",

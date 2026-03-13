@@ -20,7 +20,7 @@ export class EventStore {
    *
    * @param {Object} params
    * @param {string} params.userId - User ID
-   * @param {string} params.type - Event type (message_sent, message_received, tool_call, goal_created, goal_completed, trigger_fired)
+   * @param {string} params.type - Event type (message_sent, message_received, tool_call, task_created, task_completed, trigger_fired)
    * @param {Object} [params.data] - Event-specific data (e.g., { tool: 'web_search' })
    * @param {number} [params.timestamp] - Unix ms timestamp (defaults to now)
    * @returns {Promise<Object>} Created event document

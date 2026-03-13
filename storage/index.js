@@ -5,9 +5,13 @@ export { MemorySessionStore } from './MemoryStore.js';
 export { CronStore } from './CronStore.js';
 export { MongoCronStore, parseInterval, HEARTBEAT_INTERVAL_MS, HEARTBEAT_PROMPT } from './MongoCronAdapter.js';
 export { SQLiteCronStore } from './SQLiteCronAdapter.js';
-export { GoalStore } from './GoalStore.js';
-export { MongoGoalStore } from './MongoGoalAdapter.js';
-export { SQLiteGoalStore } from './SQLiteGoalAdapter.js';
+export { TaskStore } from './TaskStore.js';
+export { MongoTaskStore } from './MongoTaskAdapter.js';
+export { SQLiteTaskStore } from './SQLiteTaskAdapter.js';
+// Backwards compatibility aliases
+export { TaskStore as GoalStore } from './TaskStore.js';
+export { MongoTaskStore as MongoGoalStore } from './MongoTaskAdapter.js';
+export { SQLiteTaskStore as SQLiteGoalStore } from './SQLiteTaskAdapter.js';
 export { TriggerStore } from './TriggerStore.js';
 export { MongoTriggerStore } from './MongoTriggerAdapter.js';
 export { SQLiteTriggerStore } from './SQLiteTriggerAdapter.js';

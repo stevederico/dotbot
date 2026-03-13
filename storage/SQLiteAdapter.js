@@ -71,6 +71,7 @@ export class SQLiteSessionStore extends SessionStore {
   async createSession(owner, model = 'gpt-oss:20b', provider = 'ollama') {
     if (!this.db) throw new Error('Sessions not initialized. Call init() first.');
 
+    const now = new Date();
     const session = {
       id: crypto.randomUUID(),
       owner,
@@ -78,8 +79,8 @@ export class SQLiteSessionStore extends SessionStore {
       messages: [{ role: 'system', content: await this.buildSystemPrompt(owner) }],
       model,
       provider,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
     };
 
     const stmt = this.db.prepare(`
@@ -94,8 +95,8 @@ export class SQLiteSessionStore extends SessionStore {
       JSON.stringify(session.messages),
       session.model,
       session.provider,
-      session.createdAt.toISOString(),
-      session.updatedAt.toISOString()
+      session.createdAt,
+      session.updatedAt
     );
 
     return session;
@@ -187,7 +188,11 @@ export class SQLiteSessionStore extends SessionStore {
     if (titleRow && !titleRow.title) {
       const firstUserMsg = normalized.find((m) => m.role === 'user');
       if (firstUserMsg && typeof firstUserMsg.content === 'string') {
-        updateFields.title = firstUserMsg.content.slice(0, 60);
+        const rawTitle = firstUserMsg.content.slice(0, 60).trim();
+        // Skip generic/short titles
+        if (rawTitle.length >= 5 && !/^(msg|test|hi|hey|hello|ok|yo|sup)\d*$/i.test(rawTitle)) {
+          updateFields.title = rawTitle;
+        }
       }
     }
 
@@ -233,6 +238,19 @@ export class SQLiteSessionStore extends SessionStore {
     stmt.run(provider, new Date().toISOString(), sessionId);
   }
 
+  /**
+   * Update session title.
+   *
+   * @param {string} sessionId - Session UUID
+   * @param {string} title - New title
+   */
+  async updateTitle(sessionId, title) {
+    const stmt = this.db.prepare(`
+      UPDATE sessions SET title = ?, updatedAt = ? WHERE id = ?
+    `);
+    stmt.run(title, new Date().toISOString(), sessionId);
+  }
+
   async clearSession(sessionId) {
     const ownerStmt = this.db.prepare('SELECT owner FROM sessions WHERE id = ?');
     const ownerRow = ownerStmt.get(sessionId);
@@ -248,8 +266,7 @@ export class SQLiteSessionStore extends SessionStore {
 
   async listSessions(owner) {
     const stmt = this.db.prepare(`
-      SELECT id, title, model, provider, createdAt, updatedAt,
-             json_array_length(messages) as messageCount
+      SELECT id, title, model, provider, messages, createdAt, updatedAt
       FROM sessions
       WHERE owner = ?
       ORDER BY updatedAt DESC
@@ -258,15 +275,25 @@ export class SQLiteSessionStore extends SessionStore {
 
     const rows = stmt.all(owner);
 
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title || '',
-      model: row.model,
-      provider: row.provider || 'ollama',
-      createdAt: new Date(row.createdAt),
-      updatedAt: new Date(row.updatedAt),
-      messageCount: row.messageCount || 0,
-    }));
+    return rows.map((row) => {
+      let parsedMessages = [];
+      try {
+        parsedMessages = JSON.parse(row.messages || '[]');
+      } catch {
+        parsedMessages = [];
+      }
+      return {
+        id: row.id,
+        owner: owner,
+        title: row.title || '',
+        model: row.model,
+        provider: row.provider || 'ollama',
+        messages: parsedMessages,
+        createdAt: new Date(row.createdAt).toISOString(),
+        updatedAt: new Date(row.updatedAt).toISOString(),
+        messageCount: parsedMessages.length,
+      };
+    });
   }
 
   async deleteSession(sessionId, owner) {
@@ -276,6 +303,45 @@ export class SQLiteSessionStore extends SessionStore {
 
     const result = stmt.run(sessionId, owner);
     return { deletedCount: result.changes };
+  }
+
+  /**
+   * Upsert a session by Swift's conversation ID.
+   * Creates a new session or updates an existing one with the given messages.
+   * Used to sync Swift conversations to the agent SQLite store.
+   *
+   * @param {string} sessionId - Swift conversation UUID (used as session ID)
+   * @param {string} owner - User ID
+   * @param {Array} messages - Full message array from Swift (already normalized)
+   * @param {string} model - Model identifier
+   * @param {string} [provider='ollama'] - Provider name
+   */
+  async upsertSession(sessionId, owner, messages, model, provider = 'ollama') {
+    if (!this.db) throw new Error('Sessions not initialized. Call init() first.');
+
+    const now = new Date().toISOString();
+    const messagesJson = JSON.stringify(messages);
+
+    // Auto-title from first user message (only if descriptive enough)
+    const firstUser = messages.find((m) => m.role === 'user');
+    const rawTitle = (firstUser?.content || '').slice(0, 60).trim();
+    // Skip generic/short titles - require at least 5 chars and not look like test input
+    const title = rawTitle.length >= 5 && !/^(msg|test|hi|hey|hello|ok|yo|sup)\d*$/i.test(rawTitle) ? rawTitle : '';
+
+    // Try UPDATE first
+    const updateStmt = this.db.prepare(`
+      UPDATE sessions SET messages=?, model=?, provider=?, title=?, updatedAt=? WHERE id=?
+    `);
+    const result = updateStmt.run(messagesJson, model, provider, title, now, sessionId);
+
+    // If no row updated, INSERT
+    if (result.changes === 0) {
+      const insertStmt = this.db.prepare(`
+        INSERT INTO sessions (id, owner, title, messages, model, provider, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      insertStmt.run(sessionId, owner, title, messagesJson, model, provider, now, now);
+    }
   }
 
   /**
@@ -293,8 +359,8 @@ export class SQLiteSessionStore extends SessionStore {
       messages: JSON.parse(row.messages),
       model: row.model,
       provider: row.provider,
-      createdAt: new Date(row.createdAt),
-      updatedAt: new Date(row.updatedAt),
+      createdAt: new Date(row.createdAt).toISOString(),
+      updatedAt: new Date(row.updatedAt).toISOString(),
     };
   }
 

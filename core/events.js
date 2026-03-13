@@ -191,6 +191,10 @@ export function validateEvent(event) {
       }
       break;
 
+    case 'compaction':
+      // Compaction events don't have strict schema requirements
+      break;
+
     case 'image':
       if (typeof event.url !== 'string') {
         throw new Error('image event must have url string');
@@ -198,10 +202,6 @@ export function validateEvent(event) {
       if (typeof event.prompt !== 'string') {
         throw new Error('image event must have prompt string');
       }
-      break;
-
-    case 'compaction':
-      // Compaction events don't have strict schema requirements
       break;
 
     default:

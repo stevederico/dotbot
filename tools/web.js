@@ -7,7 +7,7 @@ export const webTools = [
   {
     name: "web_search",
     description:
-      "Search the web for current information. Use this when the user asks about recent events, facts you're unsure about, or anything that needs up-to-date information.",
+      "Search the web for current information. Use ONLY ONCE per question to find the right URL — then use browser_navigate to read the actual page. Never call this tool multiple times for the same topic. For live or dynamic content (scores, dashboards), always prefer browser_navigate over repeated searches.",
     parameters: {
       type: "object",
       properties: {

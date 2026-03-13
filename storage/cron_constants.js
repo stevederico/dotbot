@@ -12,7 +12,7 @@ export const HEARTBEAT_INTERVAL_MS = 15 * 60 * 1000;
 export const HEARTBEAT_CONCURRENCY = 5;
 
 /** The current heartbeat prompt — defines proactive agent behavior */
-export const HEARTBEAT_PROMPT = "Review your active goals and take action on the highest priority one. Use tools to make real progress — search for information, execute tasks, send notifications. If no goals exist, check memories for pending tasks. IMPORTANT: If you have nothing actionable, respond with exactly 'No action needed.' and nothing else. Do NOT ask if help is needed. Do NOT summarize status. Either take meaningful action or stay silent.";
+export const HEARTBEAT_PROMPT = "Review your active tasks and take action on the highest priority one. Use tools to make real progress — search for information, execute steps, send notifications. If no tasks exist, check memories for pending work.";
 
 /**
  * Run an array of async functions with a concurrency limit

@@ -1,23 +1,29 @@
-import { ObjectId } from 'mongodb';
-import { GoalStore } from './GoalStore.js';
+import { TaskStore } from './TaskStore.js';
+
+// Lazy-load mongodb to avoid hard dependency at module evaluation time
+let _ObjectId = null;
+async function getObjectId() {
+  if (!_ObjectId) { _ObjectId = (await import('mongodb')).ObjectId; }
+  return _ObjectId;
+}
 
 /**
- * MongoDB implementation of GoalStore
+ * MongoDB implementation of TaskStore
  */
-export class MongoGoalStore extends GoalStore {
+export class MongoTaskStore extends TaskStore {
   constructor() {
     super();
     this.collection = null;
   }
 
   /**
-   * Initialize MongoDB goal store
+   * Initialize MongoDB task store
    *
    * @param {import('mongodb').Db} db - MongoDB database instance
    * @param {Object} options - Optional configuration
    */
   async init(db, options = {}) {
-    this.collection = db.collection('goals');
+    this.collection = db.collection('tasks');
 
     // Create indexes
     await this.collection.createIndex({ userId: 1, status: 1 }).catch(() => {});
@@ -25,13 +31,13 @@ export class MongoGoalStore extends GoalStore {
     await this.collection.createIndex({ userId: 1, priority: 1 }).catch(() => {});
     await this.collection.createIndex({ userId: 1, deadline: 1 }).catch(() => {});
 
-    console.log('[goals] MongoGoalStore initialized');
+    console.log('[tasks] MongoTaskStore initialized');
   }
 
   /**
-   * Create a new goal
+   * Create a new task
    */
-  async createGoal({ userId, description, steps = [], category = 'general', priority = 'medium', deadline = null, mode = 'auto' }) {
+  async createTask({ userId, description, steps = [], category = 'general', priority = 'medium', deadline = null, mode = 'auto' }) {
     // Normalize steps to objects
     const normalizedSteps = steps.map(step => {
       if (typeof step === 'string') {
@@ -75,48 +81,50 @@ export class MongoGoalStore extends GoalStore {
   }
 
   /**
-   * Get goals for a user
+   * Get tasks for a user
    */
-  async getGoals(userId, filters = {}) {
+  async getTasks(userId, filters = {}) {
     const query = { userId };
 
     if (filters.status) query.status = filters.status;
     if (filters.category) query.category = filters.category;
     if (filters.priority) query.priority = filters.priority;
 
-    const goals = await this.collection
+    const tasks = await this.collection
       .find(query)
       .sort({ createdAt: -1 })
       .toArray();
 
-    // Calculate progress for each goal
-    return goals.map(goal => ({
-      ...goal,
-      progress: this._calculateProgress(goal),
+    // Calculate progress for each task
+    return tasks.map(task => ({
+      ...task,
+      progress: this._calculateProgress(task),
     }));
   }
 
   /**
-   * Get a single goal by ID
+   * Get a single task by ID
    */
-  async getGoal(userId, goalId) {
-    const goal = await this.collection.findOne({
-      _id: new ObjectId(goalId),
+  async getTask(userId, taskId) {
+    const ObjectId = await getObjectId();
+    const task = await this.collection.findOne({
+      _id: new ObjectId(taskId),
       userId,
     });
 
-    if (!goal) return null;
+    if (!task) return null;
 
     return {
-      ...goal,
-      progress: this._calculateProgress(goal),
+      ...task,
+      progress: this._calculateProgress(task),
     };
   }
 
   /**
-   * Update a goal
+   * Update a task
    */
-  async updateGoal(userId, goalId, updates) {
+  async updateTask(userId, taskId, updates) {
+    const ObjectId = await getObjectId();
     const validUpdates = {};
     const allowedFields = [
       'description', 'steps', 'category', 'priority', 'deadline',
@@ -137,7 +145,7 @@ export class MongoGoalStore extends GoalStore {
     validUpdates.updatedAt = new Date();
 
     const result = await this.collection.updateOne(
-      { _id: new ObjectId(goalId), userId },
+      { _id: new ObjectId(taskId), userId },
       { $set: validUpdates }
     );
 
@@ -145,22 +153,23 @@ export class MongoGoalStore extends GoalStore {
   }
 
   /**
-   * Delete a goal
+   * Delete a task
    */
-  async deleteGoal(userId, goalId) {
+  async deleteTask(userId, taskId) {
+    const ObjectId = await getObjectId();
     const result = await this.collection.deleteOne({
-      _id: new ObjectId(goalId),
+      _id: new ObjectId(taskId),
       userId,
     });
     return result;
   }
 
   /**
-   * Search goals by text
+   * Search tasks by text
    */
-  async searchGoals(userId, query) {
+  async searchTasks(userId, query) {
     const regex = new RegExp(query, 'i');
-    const goals = await this.collection
+    const tasks = await this.collection
       .find({
         userId,
         $or: [
@@ -171,23 +180,23 @@ export class MongoGoalStore extends GoalStore {
       .sort({ createdAt: -1 })
       .toArray();
 
-    return goals.map(goal => ({
-      ...goal,
-      progress: this._calculateProgress(goal),
+    return tasks.map(task => ({
+      ...task,
+      progress: this._calculateProgress(task),
     }));
   }
 
   /**
-   * Get goal statistics
+   * Get task statistics
    */
-  async getGoalStats(userId) {
-    const goals = await this.collection.find({ userId }).toArray();
+  async getTaskStats(userId) {
+    const tasks = await this.collection.find({ userId }).toArray();
 
     const stats = {
-      total: goals.length,
-      pending: goals.filter(g => g.status === 'pending').length,
-      in_progress: goals.filter(g => g.status === 'in_progress').length,
-      completed: goals.filter(g => g.status === 'completed').length,
+      total: tasks.length,
+      pending: tasks.filter(g => g.status === 'pending').length,
+      in_progress: tasks.filter(g => g.status === 'in_progress').length,
+      completed: tasks.filter(g => g.status === 'completed').length,
       by_category: {},
       by_priority: {},
       overdue: 0,
@@ -195,17 +204,17 @@ export class MongoGoalStore extends GoalStore {
 
     const now = new Date();
 
-    for (const goal of goals) {
+    for (const task of tasks) {
       // Count by category
-      const cat = goal.category || 'general';
+      const cat = task.category || 'general';
       stats.by_category[cat] = (stats.by_category[cat] || 0) + 1;
 
       // Count by priority
-      const pri = goal.priority || 'medium';
+      const pri = task.priority || 'medium';
       stats.by_priority[pri] = (stats.by_priority[pri] || 0) + 1;
 
       // Count overdue
-      if (goal.deadline && new Date(goal.deadline) < now && goal.status !== 'completed') {
+      if (task.deadline && new Date(task.deadline) < now && task.status !== 'completed') {
         stats.overdue++;
       }
     }
@@ -214,11 +223,11 @@ export class MongoGoalStore extends GoalStore {
   }
 
   /**
-   * Calculate progress percentage from goal
+   * Calculate progress percentage from task
    * @private
    */
-  _calculateProgress(goal) {
-    return this._calculateProgressFromSteps(goal.steps || []);
+  _calculateProgress(task) {
+    return this._calculateProgressFromSteps(task.steps || []);
   }
 
   /**

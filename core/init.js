@@ -8,7 +8,7 @@
 
 import { SQLiteSessionStore } from '../storage/SQLiteAdapter.js';
 import { SQLiteCronStore } from '../storage/SQLiteCronAdapter.js';
-import { SQLiteGoalStore } from '../storage/SQLiteGoalAdapter.js';
+import { SQLiteTaskStore } from '../storage/SQLiteTaskAdapter.js';
 import { SQLiteTriggerStore } from '../storage/SQLiteTriggerAdapter.js';
 import { SQLiteMemoryStore } from '../storage/SQLiteMemoryAdapter.js';
 import { coreTools } from '../tools/index.js';
@@ -31,8 +31,8 @@ import { createTriggerHandler } from './trigger_handler.js';
  * @param {Object} [options.hooks] - Host-specific hooks
  * @param {Function} [options.hooks.onNotification] - async (userId, { title, body, type }) => void
  * @param {Function} [options.hooks.prefsFetcher] - async (userId) => { agentName, agentPersonality }
- * @param {Function} [options.hooks.goalFetcher] - async (userId, goalId) => goal object
- * @param {Function} [options.hooks.goalsFinder] - async (userId, filter) => goals array
+ * @param {Function} [options.hooks.taskFetcher] - async (userId, taskId) => task object
+ * @param {Function} [options.hooks.tasksFinder] - async (userId, filter) => tasks array
  * @returns {Promise<Object>} { agent, stores, fireTrigger, shutdown } or { stores, shutdown } if storesOnly
  */
 export async function init({
@@ -52,18 +52,18 @@ export async function init({
   }
 
   // Initialize stores
-  const goalStore = new SQLiteGoalStore();
+  const taskStore = new SQLiteTaskStore();
   const triggerStore = new SQLiteTriggerStore();
   const memoryStore = new SQLiteMemoryStore();
 
-  // Initialize goal, trigger, and memory stores (always needed)
-  await goalStore.init({ dbPath });
+  // Initialize task, trigger, and memory stores (always needed)
+  await taskStore.init({ dbPath });
   await triggerStore.init({ dbPath });
   await memoryStore.init({ dbPath });
 
   // Bundle stores
   const stores = {
-    goal: goalStore,
+    task: taskStore,
     trigger: triggerStore,
     memory: memoryStore,
   };
@@ -97,7 +97,7 @@ export async function init({
   const handleCronTask = createCronHandler({
     sessionStore,
     cronStore,
-    goalStore,
+    taskStore,
     memoryStore,
     providers,
     staleThresholdMs,
@@ -114,7 +114,7 @@ export async function init({
   const agent = createAgent({
     sessionStore,
     cronStore,
-    goalStore,
+    taskStore,
     triggerStore,
     memoryStore,
     providers,

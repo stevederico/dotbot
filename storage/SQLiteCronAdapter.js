@@ -34,6 +34,20 @@ export class SQLiteCronStore extends CronStore {
     this.db = new DatabaseSync(dbPath);
     this.onTaskFire = options.onTaskFire || null;
 
+    // Migration: goal_id → task_id column
+    const cols = this.db.prepare("PRAGMA table_info(cron_tasks)").all();
+    if (cols.some(c => c.name === 'goal_id') && !cols.some(c => c.name === 'task_id')) {
+      console.log('[cron] migrating goal_id column to task_id...');
+      this.db.exec('ALTER TABLE cron_tasks RENAME COLUMN goal_id TO task_id');
+    }
+
+    // Migration: goal_step → task_step task type
+    const goalStepCount = this.db.prepare("SELECT COUNT(*) as cnt FROM cron_tasks WHERE name = 'goal_step'").get();
+    if (goalStepCount && goalStepCount.cnt > 0) {
+      console.log('[cron] migrating goal_step tasks to task_step...');
+      this.db.prepare("UPDATE cron_tasks SET name = 'task_step' WHERE name = 'goal_step'").run();
+    }
+
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS cron_tasks (
         id TEXT PRIMARY KEY,
@@ -41,7 +55,7 @@ export class SQLiteCronStore extends CronStore {
         prompt TEXT NOT NULL,
         session_id TEXT,
         user_id TEXT,
-        goal_id TEXT,
+        task_id TEXT,
         next_run_at INTEGER NOT NULL,
         interval_ms INTEGER,
         recurring INTEGER DEFAULT 0,
@@ -110,7 +124,7 @@ export class SQLiteCronStore extends CronStore {
       const heartbeats = dueTasks.filter(t => t.name === 'heartbeat');
       const others = dueTasks.filter(t => t.name !== 'heartbeat');
 
-      /** Process a single task: update schedule before firing, then update last_run_at */
+      /** Process a single task: update schedule first, then fire callback */
       const processTask = async (task) => {
         const mapped = this._rowToTask(task);
         // Update schedule BEFORE firing to prevent duplicate picks during long-running callbacks
@@ -158,12 +172,12 @@ export class SQLiteCronStore extends CronStore {
    * @param {Object} params - Task parameters
    * @returns {Promise<Object>} Created task
    */
-  async createTask({ name, prompt, sessionId, userId, runAt, intervalMs, recurring, goalId }) {
+  async createTask({ name, prompt, sessionId, userId, runAt, intervalMs, recurring, taskId }) {
     const id = crypto.randomUUID();
     const now = Date.now();
 
     this.db.prepare(`
-      INSERT INTO cron_tasks (id, name, prompt, session_id, user_id, goal_id, next_run_at, interval_ms, recurring, enabled, created_at, last_run_at)
+      INSERT INTO cron_tasks (id, name, prompt, session_id, user_id, task_id, next_run_at, interval_ms, recurring, enabled, created_at, last_run_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL)
     `).run(
       id,
@@ -171,7 +185,7 @@ export class SQLiteCronStore extends CronStore {
       prompt,
       sessionId || 'default',
       userId || null,
-      goalId || null,
+      taskId || null,
       new Date(runAt).getTime(),
       intervalMs || null,
       recurring ? 1 : 0,
@@ -184,7 +198,7 @@ export class SQLiteCronStore extends CronStore {
       prompt,
       sessionId: sessionId || 'default',
       userId: userId || null,
-      goalId: goalId || null,
+      taskId: taskId || null,
       nextRunAt: new Date(runAt),
       intervalMs: intervalMs || null,
       recurring: recurring || false,
@@ -360,6 +374,53 @@ export class SQLiteCronStore extends CronStore {
   }
 
   /**
+   * Ensure a Morning Brief job exists for the user (disabled by default).
+   * Creates a daily recurring job at 8:00 AM if not present.
+   *
+   * @param {string} userId - User ID
+   * @returns {Promise<Object|null>} Created task or null if already exists
+   */
+  async ensureMorningBrief(userId) {
+    if (!this.db || !userId) return null;
+
+    // Check if Morning Brief already exists for this user
+    const existing = this.db.prepare(
+      `SELECT id FROM cron_tasks WHERE user_id = ? AND name = 'Morning Brief' LIMIT 1`
+    ).get(userId);
+    if (existing) return null;
+
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const MORNING_BRIEF_PROMPT = `Good morning! Give me a brief summary to start my day:
+1. What's on my calendar today?
+2. Any important reminders or tasks due?
+3. A quick weather update for my location.
+Keep it concise and actionable.`;
+
+    // Calculate next 8:00 AM
+    const now = new Date();
+    const today8AM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
+    const nextRun = now.getTime() < today8AM.getTime()
+      ? today8AM.getTime()
+      : today8AM.getTime() + DAY_MS;
+
+    const id = crypto.randomUUID();
+    const nowMs = Date.now();
+
+    const result = this.db.prepare(`
+      INSERT OR IGNORE INTO cron_tasks (id, name, prompt, session_id, user_id, next_run_at, interval_ms, recurring, enabled, created_at, last_run_at)
+      VALUES (?, 'Morning Brief', ?, 'default', ?, ?, ?, 1, 0, ?, NULL)
+    `).run(id, MORNING_BRIEF_PROMPT, userId, nextRun, DAY_MS, nowMs);
+
+    if (result.changes > 0) {
+      const runTime = new Date(nextRun);
+      console.log(`[cron] created Morning Brief for user ${userId}, next run at ${runTime.toLocaleTimeString()} (disabled by default)`);
+      return { id };
+    }
+
+    return null;
+  }
+
+  /**
    * Get heartbeat status for a user
    *
    * @param {string} userId - User ID
@@ -469,7 +530,7 @@ export class SQLiteCronStore extends CronStore {
       prompt: row.prompt,
       sessionId: row.session_id,
       userId: row.user_id,
-      goalId: row.goal_id,
+      taskId: row.task_id,
       nextRunAt: new Date(row.next_run_at),
       intervalMs: row.interval_ms,
       recurring: !!row.recurring,

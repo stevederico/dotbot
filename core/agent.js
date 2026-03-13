@@ -34,7 +34,7 @@ const OLLAMA_BASE = "http://localhost:11434";
  * @param {Object} [options.context] - Execution context passed to tool execute functions (e.g. databaseManager, dbConfig, userID).
  * @yields {Object} Stream events for the frontend
  */
-export async function* agentLoop({ model, messages, tools, signal, provider, context }) {
+export async function* agentLoop({ model, messages, tools, signal, provider, context, maxTurns }) {
   // Default to Ollama for backward compat (cron, etc.)
   if (!provider) {
     provider = AI_PROVIDERS.ollama;
@@ -57,10 +57,11 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
     const content = typeof lastUserMsg.content === 'string'
       ? lastUserMsg.content
       : JSON.stringify(lastUserMsg.content);
-    logEvent('message_sent', { length: content.length });
+    // Full audit log: capture complete message content for debugging
+    logEvent('message_sent', { length: content.length, content });
   }
 
-  const maxIterations = 10;
+  const maxIterations = maxTurns || 10;
   let iteration = 0;
 
   while (iteration < maxIterations) {
@@ -157,6 +158,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
         model: targetModel,
         messages: finalMessages,
         stream: true,
+        max_tokens: 8192,
       };
 
       // Include tool definitions for non-local providers and local providers
@@ -432,7 +434,13 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
 
           tc.result = resultStr;
           tc.status = "done";
-          logEvent('tool_call', { tool: tc.name, success: true });
+          // Full audit log: capture tool input and output for debugging
+          logEvent('tool_call', {
+            tool: tc.name,
+            success: true,
+            input: tc.input,
+            result: resultStr,
+          });
         } catch (err) {
           const errorResult = `Tool error: ${err.message}`;
           const toolErrorEvent = { type: "tool_error", name: tc.name, error: errorResult };
@@ -440,7 +448,14 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
           yield toolErrorEvent;
           tc.result = errorResult;
           tc.status = "error";
-          logEvent('tool_call', { tool: tc.name, success: false });
+          // Full audit log: capture tool input and error for debugging
+          logEvent('tool_call', {
+            tool: tc.name,
+            success: false,
+            input: tc.input,
+            error: err.message,
+            stack: err.stack?.split('\n').slice(0, 5).join('\n'),
+          });
         }
       }
 
@@ -457,7 +472,11 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
 
       // Standard format: plain string content, no provider-specific wrapping
       messages.push({ role: "assistant", content: fullContent, _ts: Date.now() });
-      logEvent('message_received', { length: fullContent.length });
+      // Full audit log: capture complete response content for debugging
+      logEvent('message_received', {
+        length: fullContent.length,
+        content: fullContent,
+      });
       if (followup) {
         const followupEvent = { type: "followup", text: followup };
         validateEvent(followupEvent);
@@ -470,7 +489,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
     }
   }
 
-  const maxIterEvent = { type: "max_iterations", message: "I've reached my reasoning limit (10 steps). You can send another message to continue." };
+  const maxIterEvent = { type: "max_iterations", message: `I've reached my reasoning limit (${maxIterations} steps). You can send another message to continue.` };
   validateEvent(maxIterEvent);
   yield maxIterEvent;
 }
