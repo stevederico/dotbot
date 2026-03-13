@@ -50,7 +50,7 @@ async function loadModules() {
   agentLoop = mod.agentLoop;
 }
 
-const VERSION = '0.17';
+const VERSION = '0.18';
 const DEFAULT_PORT = 3000;
 const DEFAULT_DB = './dotbot.db';
 
@@ -71,6 +71,7 @@ Options:
   --model, -m      Model name (default: grok-4-1-fast-reasoning)
   --db             SQLite database path (default: ${DEFAULT_DB})
   --port           Server port for 'serve' command (default: ${DEFAULT_PORT})
+  --verbose        Show initialization logs
   --help, -h       Show this help
   --version, -v    Show version
 
@@ -98,6 +99,7 @@ function parseCliArgs() {
       options: {
         help: { type: 'boolean', short: 'h', default: false },
         version: { type: 'boolean', short: 'v', default: false },
+        verbose: { type: 'boolean', default: false },
         provider: { type: 'string', short: 'p', default: 'xai' },
         model: { type: 'string', short: 'm', default: 'grok-4-1-fast-reasoning' },
         db: { type: 'string', default: DEFAULT_DB },
@@ -149,10 +151,17 @@ async function getProviderConfig(providerId) {
  * Initialize stores.
  *
  * @param {string} dbPath - Path to SQLite database
+ * @param {boolean} verbose - Show initialization logs
  * @returns {Promise<Object>} Initialized stores
  */
-async function initStores(dbPath) {
+async function initStores(dbPath, verbose = false) {
   await loadModules();
+
+  // Suppress init logs unless verbose
+  const originalLog = console.log;
+  if (!verbose) {
+    console.log = () => {};
+  }
 
   const sessionStore = new stores.SQLiteSessionStore();
   await sessionStore.init(dbPath, {
@@ -174,6 +183,9 @@ async function initStores(dbPath) {
   const eventStore = new stores.SQLiteEventStore();
   await eventStore.init(dbPath);
 
+  // Restore console.log
+  console.log = originalLog;
+
   return { sessionStore, cronStore, taskStore, triggerStore, memoryStore, eventStore };
 }
 
@@ -184,7 +196,7 @@ async function initStores(dbPath) {
  * @param {Object} options - CLI options
  */
 async function runChat(message, options) {
-  const storesObj = await initStores(options.db);
+  const storesObj = await initStores(options.db, options.verbose);
   const provider = await getProviderConfig(options.provider);
 
   const session = await storesObj.sessionStore.createSession('cli-user', options.model, options.provider);
@@ -238,7 +250,7 @@ async function runChat(message, options) {
  * @param {Object} options - CLI options
  */
 async function runRepl(options) {
-  const storesObj = await initStores(options.db);
+  const storesObj = await initStores(options.db, options.verbose);
   const provider = await getProviderConfig(options.provider);
 
   const session = await storesObj.sessionStore.createSession('cli-user', options.model, options.provider);
@@ -338,7 +350,7 @@ async function runRepl(options) {
  */
 async function runServer(options) {
   const port = parseInt(options.port, 10);
-  const storesObj = await initStores(options.db);
+  const storesObj = await initStores(options.db, options.verbose);
 
   const server = createServer(async (req, res) => {
     // CORS headers

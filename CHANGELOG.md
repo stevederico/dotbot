@@ -1,3 +1,9 @@
+0.18
+
+  Add --verbose flag
+  Hide init logs by default
+  Add publishConfig for npm
+
 0.17
 
   Default model grok-4-1-fast-reasoning
