@@ -94,9 +94,19 @@ Usage:
   dotbot                      Interactive chat
   dotbot serve [--port N]     Start HTTP server (default: ${DEFAULT_PORT})
 
+Commands:
+  tools                       List all available tools
+  stats                       Show database statistics
+  memory [list|search <q>]    Manage saved memories
+  jobs                        List scheduled jobs
+  tasks                       List active tasks
+  sessions                    List chat sessions
+  events [--summary]          View audit log
+
 Options:
   --provider, -p   AI provider: xai, anthropic, openai, ollama (default: xai)
   --model, -m      Model name (default: grok-4-1-fast-reasoning)
+  --system, -s     Custom system prompt (prepended to default)
   --db             SQLite database path (default: ${DEFAULT_DB})
   --port           Server port for 'serve' command (default: ${DEFAULT_PORT})
   --verbose        Show initialization logs
@@ -113,6 +123,9 @@ Examples:
   dotbot "What's the weather in SF?"
   dotbot
   dotbot serve --port 8080
+  dotbot tools
+  dotbot memory search "preferences"
+  dotbot --system "You are a pirate" "Hello"
 `);
 }
 
@@ -129,6 +142,8 @@ function parseCliArgs() {
         verbose: { type: 'boolean', default: false },
         provider: { type: 'string', short: 'p', default: 'xai' },
         model: { type: 'string', short: 'm', default: 'grok-4-1-fast-reasoning' },
+        system: { type: 'string', short: 's', default: '' },
+        summary: { type: 'boolean', default: false },
         db: { type: 'string', default: DEFAULT_DB },
         port: { type: 'string', default: String(DEFAULT_PORT) },
       },
@@ -179,10 +194,14 @@ async function getProviderConfig(providerId) {
  *
  * @param {string} dbPath - Path to SQLite database
  * @param {boolean} verbose - Show initialization logs
+ * @param {string} customSystemPrompt - Custom system prompt to prepend
  * @returns {Promise<Object>} Initialized stores
  */
-async function initStores(dbPath, verbose = false) {
+async function initStores(dbPath, verbose = false, customSystemPrompt = '') {
   await loadModules();
+
+  // Import defaultSystemPrompt for custom builder
+  const { defaultSystemPrompt } = await import('../storage/SQLiteAdapter.js');
 
   // Suppress init logs unless verbose
   const originalLog = console.log;
@@ -190,9 +209,15 @@ async function initStores(dbPath, verbose = false) {
     console.log = () => {};
   }
 
+  // Build custom systemPromptBuilder that prepends user's text
+  const systemPromptBuilder = customSystemPrompt
+    ? (prefs) => `${customSystemPrompt}\n\n${defaultSystemPrompt(prefs)}`
+    : undefined;
+
   const sessionStore = new stores.SQLiteSessionStore();
   await sessionStore.init(dbPath, {
     prefsFetcher: async () => ({ agentName: 'Dotbot', agentPersonality: '' }),
+    ...(systemPromptBuilder && { systemPromptBuilder }),
   });
 
   const cronStore = new stores.SQLiteCronStore();
@@ -223,7 +248,7 @@ async function initStores(dbPath, verbose = false) {
  * @param {Object} options - CLI options
  */
 async function runChat(message, options) {
-  const storesObj = await initStores(options.db, options.verbose);
+  const storesObj = await initStores(options.db, options.verbose, options.system);
   const provider = await getProviderConfig(options.provider);
 
   const session = await storesObj.sessionStore.createSession('cli-user', options.model, options.provider);
@@ -282,7 +307,7 @@ async function runChat(message, options) {
  * @param {Object} options - CLI options
  */
 async function runRepl(options) {
-  const storesObj = await initStores(options.db, options.verbose);
+  const storesObj = await initStores(options.db, options.verbose, options.system);
   const provider = await getProviderConfig(options.provider);
 
   const session = await storesObj.sessionStore.createSession('cli-user', options.model, options.provider);
@@ -388,7 +413,7 @@ async function runRepl(options) {
  */
 async function runServer(options) {
   const port = parseInt(options.port, 10);
-  const storesObj = await initStores(options.db, options.verbose);
+  const storesObj = await initStores(options.db, options.verbose, options.system);
 
   const server = createServer(async (req, res) => {
     // CORS headers
@@ -483,6 +508,192 @@ async function runServer(options) {
 }
 
 /**
+ * List all available tools.
+ */
+async function runTools() {
+  await loadModules();
+  console.log(`\ndotbot tools (${coreTools.length})\n`);
+
+  // Group tools by category based on name prefix
+  const categories = {};
+  for (const tool of coreTools) {
+    const prefix = tool.name.split('_')[0];
+    if (!categories[prefix]) categories[prefix] = [];
+    categories[prefix].push(tool.name);
+  }
+
+  for (const [category, tools] of Object.entries(categories).sort()) {
+    console.log(`  ${category} (${tools.length})`);
+    for (const name of tools.sort()) {
+      console.log(`    ${name}`);
+    }
+  }
+  console.log();
+}
+
+/**
+ * Show database statistics.
+ *
+ * @param {Object} options - CLI options
+ */
+async function runStats(options) {
+  const storesObj = await initStores(options.db, options.verbose, options.system);
+
+  console.log(`\ndotbot stats\n`);
+  console.log(`  Database: ${options.db}`);
+
+  // Sessions
+  const sessions = await storesObj.sessionStore.listSessions('cli-user');
+  console.log(`  Sessions: ${sessions.length}`);
+
+  // Memory
+  const memories = await storesObj.memoryStore.getAllMemories('cli-user');
+  console.log(`  Memories: ${memories.length}`);
+
+  // Jobs (need to get session IDs first)
+  const jobs = await storesObj.cronStore.listTasksBySessionIds(['default'], 'cli-user');
+  console.log(`  Jobs: ${jobs.length}`);
+
+  // Tasks
+  const tasks = await storesObj.taskStore.getTasks('cli-user');
+  console.log(`  Tasks: ${tasks.length}`);
+
+  // Triggers
+  const triggers = await storesObj.triggerStore.listTriggers('cli-user');
+  console.log(`  Triggers: ${triggers.length}`);
+
+  console.log();
+}
+
+/**
+ * Manage memories.
+ *
+ * @param {Object} options - CLI options
+ * @param {string} subcommand - list or search
+ * @param {string} query - Search query
+ */
+async function runMemory(options, subcommand, query) {
+  const storesObj = await initStores(options.db, options.verbose, options.system);
+
+  if (subcommand === 'search' && query) {
+    const results = await storesObj.memoryStore.readMemoryPattern('cli-user', `%${query}%`);
+    console.log(`\nMemory search: "${query}" (${results.length} results)\n`);
+    for (const mem of results) {
+      const val = typeof mem.value === 'string' ? mem.value : JSON.stringify(mem.value);
+      console.log(`  [${mem.key}] ${val.substring(0, 60)}${val.length > 60 ? '...' : ''}`);
+    }
+  } else {
+    const memories = await storesObj.memoryStore.getAllMemories('cli-user');
+    console.log(`\nMemories (${memories.length})\n`);
+    for (const mem of memories) {
+      const val = typeof mem.value === 'string' ? mem.value : JSON.stringify(mem.value);
+      console.log(`  [${mem.key}] ${val.substring(0, 60)}${val.length > 60 ? '...' : ''}`);
+    }
+  }
+  console.log();
+}
+
+/**
+ * List scheduled jobs.
+ *
+ * @param {Object} options - CLI options
+ */
+async function runJobs(options) {
+  const storesObj = await initStores(options.db, options.verbose, options.system);
+
+  const jobs = await storesObj.cronStore.listTasksBySessionIds(['default'], 'cli-user');
+  console.log(`\nScheduled jobs (${jobs.length})\n`);
+
+  for (const job of jobs) {
+    const status = job.enabled ? 'active' : 'paused';
+    const next = job.nextRunAt ? job.nextRunAt.toLocaleString() : 'N/A';
+    const interval = job.intervalMs ? `${Math.round(job.intervalMs / 60000)}m` : 'once';
+    console.log(`  [${job.id}] ${job.name} (${status})`);
+    console.log(`    Interval: ${interval}`);
+    console.log(`    Next: ${next}`);
+    console.log(`    Prompt: ${job.prompt.substring(0, 50)}${job.prompt.length > 50 ? '...' : ''}`);
+    console.log();
+  }
+}
+
+/**
+ * List active tasks.
+ *
+ * @param {Object} options - CLI options
+ */
+async function runTasks(options) {
+  const storesObj = await initStores(options.db, options.verbose, options.system);
+
+  const tasks = await storesObj.taskStore.getTasks('cli-user');
+  console.log(`\nTasks (${tasks.length})\n`);
+
+  for (const task of tasks) {
+    const steps = task.steps ? JSON.parse(task.steps) : [];
+    const progress = `${task.current_step || 0}/${steps.length}`;
+    console.log(`  [${task.id}] ${task.status} (${progress})`);
+    console.log(`    Description: ${task.description?.substring(0, 50) || 'N/A'}${task.description?.length > 50 ? '...' : ''}`);
+    console.log(`    Mode: ${task.mode || 'auto'}`);
+    console.log(`    Created: ${new Date(task.created_at).toLocaleString()}`);
+    console.log();
+  }
+}
+
+/**
+ * List chat sessions.
+ *
+ * @param {Object} options - CLI options
+ */
+async function runSessions(options) {
+  const storesObj = await initStores(options.db, options.verbose, options.system);
+
+  const sessions = await storesObj.sessionStore.listSessions('cli-user');
+  console.log(`\nSessions (${sessions.length})\n`);
+
+  for (const session of sessions) {
+    const updated = new Date(session.updatedAt).toLocaleString();
+    const msgCount = session.messageCount || 0;
+    console.log(`  [${session.id}]`);
+    console.log(`    Title: ${session.title || 'Untitled'}`);
+    console.log(`    Messages: ${msgCount}`);
+    console.log(`    Updated: ${updated}`);
+    console.log();
+  }
+}
+
+/**
+ * View audit log events.
+ *
+ * @param {Object} options - CLI options
+ */
+async function runEvents(options) {
+  const storesObj = await initStores(options.db, options.verbose, options.system);
+
+  if (options.summary) {
+    const summary = await storesObj.eventStore.summary({ userId: 'cli-user' });
+    console.log(`\nEvent summary\n`);
+    console.log(`  Total events: ${summary.total || 0}`);
+    if (summary.breakdown) {
+      for (const [type, count] of Object.entries(summary.breakdown)) {
+        console.log(`  ${type}: ${count}`);
+      }
+    }
+  } else {
+    const events = await storesObj.eventStore.query({ userId: 'cli-user', limit: 20 });
+    console.log(`\nRecent events (${events.length})\n`);
+
+    for (const event of events) {
+      const time = new Date(event.timestamp).toLocaleString();
+      console.log(`  [${time}] ${event.type}`);
+      if (event.data) {
+        const data = typeof event.data === 'string' ? event.data : JSON.stringify(event.data);
+        console.log(`    ${data.substring(0, 60)}${data.length > 60 ? '...' : ''}`);
+      }
+    }
+  }
+  console.log();
+}
+
+/**
  * Main entry point.
  */
 async function main() {
@@ -500,14 +711,38 @@ async function main() {
 
   const command = args.positionals[0];
 
-  if (command === 'serve') {
-    await runServer(args);
-  } else {
-    const message = args.positionals.join(' ');
-    if (message) {
-      await runChat(message, args);
-    } else {
-      await runRepl(args);
+  switch (command) {
+    case 'serve':
+      await runServer(args);
+      break;
+    case 'tools':
+      await runTools();
+      break;
+    case 'stats':
+      await runStats(args);
+      break;
+    case 'memory':
+      await runMemory(args, args.positionals[1], args.positionals.slice(2).join(' '));
+      break;
+    case 'jobs':
+      await runJobs(args);
+      break;
+    case 'tasks':
+      await runTasks(args);
+      break;
+    case 'sessions':
+      await runSessions(args);
+      break;
+    case 'events':
+      await runEvents(args);
+      break;
+    default: {
+      const message = args.positionals.join(' ');
+      if (message) {
+        await runChat(message, args);
+      } else {
+        await runRepl(args);
+      }
     }
   }
 }

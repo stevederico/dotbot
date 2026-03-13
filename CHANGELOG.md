@@ -1,3 +1,14 @@
+0.24
+
+  Add --system flag for custom prompts
+  Add tools command
+  Add stats command
+  Add memory command
+  Add jobs command
+  Add tasks command
+  Add sessions command
+  Add events command
+
 0.23
 
   Fix no-args launches interactive

@@ -3,7 +3,7 @@
   <h1 align="center" style="border-bottom: none; margin-bottom: 0;">dotbot</h1>
   <h3 align="center" style="margin-top: 0; font-weight: normal;">
     The ultra-lean AI agent.<br>
-    11k lines. 47 tools. 0 dependencies.
+    11k lines. 53 tools. 0 dependencies.
   </h3>
   <p align="center">
     <a href="https://opensource.org/licenses/mit">
@@ -13,7 +13,7 @@
       <img src="https://img.shields.io/github/stars/stevederico/dotbot?style=social" alt="GitHub stars">
     </a>
     <a href="https://github.com/stevederico/dotbot">
-      <img src="https://img.shields.io/badge/version-0.20-green" alt="version">
+      <img src="https://img.shields.io/badge/version-0.24-green" alt="version">
     </a>
     <img src="https://img.shields.io/badge/LOC-11k-orange" alt="Lines of Code">
   </p>
@@ -28,7 +28,7 @@
 | | dotbot | nanobot | OpenClaw |
 |---|:---:|:---:|:---:|
 | **Lines of Code** | **11k** | 22k | 1M+ |
-| **Tools** | **47** | ~10 | ~50 |
+| **Tools** | **53** | ~10 | ~50 |
 | **Dependencies** | Minimal | Heavy | Heavy |
 
 Everything you need for AI agents. Nothing you don't. No bloated abstractions. No dependency hell. Just a clean, focused agent that works.
@@ -42,8 +42,9 @@ A **streaming AI agent** with tool execution, autonomous tasks, and scheduled jo
 **As a CLI:**
 ```bash
 dotbot "What's the weather in San Francisco?"
-dotbot repl
+dotbot                  # Interactive mode
 dotbot serve --port 3000
+dotbot tools            # List all 53 tools
 ```
 
 **As a library:**
@@ -67,11 +68,16 @@ export XAI_API_KEY=xai-...
 # Chat
 dotbot "Summarize the top 3 AI news stories today"
 
-# Interactive REPL
-dotbot repl
+# Interactive mode
+dotbot
 
 # Start HTTP server
 dotbot serve --port 3000
+
+# Inspect data
+dotbot tools
+dotbot stats
+dotbot memory
 ```
 
 ### Library Usage
@@ -116,7 +122,7 @@ for await (const event of agent.chat({
 - **Abort support** via AbortSignal
 - **Automatic retries** with provider failover
 
-### 🔧 **47 Built-in Tools**
+### 🔧 **53 Built-in Tools**
 - **Memory** — save, search, update, delete long-term memory
 - **Web** — search, fetch, browser automation with Playwright
 - **Files** — read, write, list, delete, move files
@@ -148,18 +154,29 @@ for await (const event of agent.chat({
 ## CLI Reference
 
 ```
-dotbot v0.19 — AI agent CLI
+dotbot v0.24 — AI agent CLI
 
 Usage:
-  dotbot "message"            Send a message (default)
-  dotbot repl                 Interactive chat session
+  dotbot "message"            One-shot query
+  dotbot                      Interactive chat
   dotbot serve [--port N]     Start HTTP server (default: 3000)
+
+Commands:
+  tools                       List all available tools
+  stats                       Show database statistics
+  memory [list|search <q>]    Manage saved memories
+  jobs                        List scheduled jobs
+  tasks                       List active tasks
+  sessions                    List chat sessions
+  events [--summary]          View audit log
 
 Options:
   --provider, -p   AI provider: xai, anthropic, openai, ollama (default: xai)
   --model, -m      Model name (default: grok-4-1-fast-reasoning)
+  --system, -s     Custom system prompt (prepended to default)
   --db             SQLite database path (default: ./dotbot.db)
   --port           Server port for 'serve' command
+  --verbose        Show initialization logs
   --help, -h       Show help
   --version, -v    Show version
 
@@ -230,7 +247,7 @@ for await (const event of agent.chat({
 
 <br />
 
-## Built-in Tools (47)
+## Built-in Tools (53)
 
 | Category | Tools |
 |----------|-------|
