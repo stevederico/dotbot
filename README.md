@@ -22,7 +22,7 @@
 
 ## Why dotbot?
 
-**90% smaller than OpenClaw. Half the size of nanobot. 4x the tools.**
+**90% smaller than [OpenClaw](https://github.com/openclaw/openclaw). Half the size of [nanobot](https://github.com/HKUDS/nanobot). 4x the tools.**
 
 | | dotbot | nanobot | OpenClaw |
 |---|:---:|:---:|:---:|
