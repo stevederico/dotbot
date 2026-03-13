@@ -64,6 +64,7 @@ const DEFAULT_DB = './dotbot.db';
 let spinnerInterval = null;
 
 function startSpinner() {
+  if (spinnerInterval) clearInterval(spinnerInterval);
   spinnerInterval = setInterval(() => {
     process.stdout.write('.');
   }, 300);
@@ -256,7 +257,8 @@ async function runChat(message, options) {
         process.stdout.write(event.text);
         break;
       case 'tool_start':
-        process.stdout.write(`\n[${event.name}] `);
+        stopSpinner('');  // Stop thinking spinner silently
+        process.stdout.write(`[${event.name}] `);
         startSpinner();
         break;
       case 'tool_result':
@@ -348,7 +350,8 @@ async function runRepl(options) {
               assistantContent += event.text;
               break;
             case 'tool_start':
-              process.stdout.write(`\n[${event.name}] `);
+              stopSpinner('');  // Stop thinking spinner silently
+              process.stdout.write(`[${event.name}] `);
               startSpinner();
               break;
             case 'tool_result':
