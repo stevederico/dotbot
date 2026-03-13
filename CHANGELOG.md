@@ -1,3 +1,8 @@
+0.15.0
+
+  Add CLI (dotbot chat, repl, serve)
+  Add bin/dotbot.js entry point
+
 0.14.1
 
   Rename package to dotbot
