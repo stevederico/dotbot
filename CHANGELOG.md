@@ -1,3 +1,7 @@
+0.23
+
+  Fix no-args launches interactive
+
 0.22
 
   Simplify CLI, no args for interactive
