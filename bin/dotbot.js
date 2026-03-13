@@ -1,5 +1,14 @@
 #!/usr/bin/env node
 
+// Suppress SQLite experimental warning (stable but still flagged in Node 24)
+const originalEmit = process.emit;
+process.emit = function (event, error) {
+  if (event === 'warning' && error?.name === 'ExperimentalWarning' && error?.message?.includes('SQLite')) {
+    return false;
+  }
+  return originalEmit.apply(process, arguments);
+};
+
 /**
  * dotbot CLI
  *
@@ -41,7 +50,7 @@ async function loadModules() {
   agentLoop = mod.agentLoop;
 }
 
-const VERSION = '0.16.1';
+const VERSION = '0.17';
 const DEFAULT_PORT = 3000;
 const DEFAULT_DB = './dotbot.db';
 
@@ -53,13 +62,13 @@ function printHelp() {
 dotbot v${VERSION} — AI agent CLI
 
 Usage:
-  dotbot chat "message"       Send a one-shot message
+  dotbot "message"            Send a message (default command)
   dotbot repl                 Interactive chat session
   dotbot serve [--port N]     Start HTTP server (default: ${DEFAULT_PORT})
 
 Options:
   --provider, -p   AI provider: xai, anthropic, openai, ollama (default: xai)
-  --model, -m      Model name (default: grok-3)
+  --model, -m      Model name (default: grok-4-1-fast-reasoning)
   --db             SQLite database path (default: ${DEFAULT_DB})
   --port           Server port for 'serve' command (default: ${DEFAULT_PORT})
   --help, -h       Show this help
@@ -72,8 +81,9 @@ Environment Variables:
   OLLAMA_BASE_URL      Base URL for Ollama (default: http://localhost:11434)
 
 Examples:
-  dotbot chat "What's the weather in SF?"
-  dotbot repl --provider anthropic --model claude-sonnet-4-5
+  dotbot "What's the weather in SF?"
+  dotbot "Summarize the news" -p anthropic -m claude-sonnet-4-5
+  dotbot repl
   dotbot serve --port 8080
 `);
 }
@@ -89,7 +99,7 @@ function parseCliArgs() {
         help: { type: 'boolean', short: 'h', default: false },
         version: { type: 'boolean', short: 'v', default: false },
         provider: { type: 'string', short: 'p', default: 'xai' },
-        model: { type: 'string', short: 'm', default: 'grok-3' },
+        model: { type: 'string', short: 'm', default: 'grok-4-1-fast-reasoning' },
         db: { type: 'string', default: DEFAULT_DB },
         port: { type: 'string', default: String(DEFAULT_PORT) },
       },
@@ -198,6 +208,11 @@ async function runChat(message, options) {
     context,
   })) {
     switch (event.type) {
+      case 'thinking':
+        if (event.text) {
+          process.stdout.write(`\x1b[2m${event.text}\x1b[0m`);
+        }
+        break;
       case 'text_delta':
         process.stdout.write(event.text);
         break;
@@ -280,6 +295,11 @@ async function runRepl(options) {
           context,
         })) {
           switch (event.type) {
+            case 'thinking':
+              if (event.text) {
+                process.stdout.write(`\x1b[2m${event.text}\x1b[0m`);
+              }
+              break;
             case 'text_delta':
               process.stdout.write(event.text);
               assistantContent += event.text;
@@ -432,12 +452,12 @@ async function main() {
 
   switch (command) {
     case 'chat':
-      const message = args.positionals.slice(1).join(' ');
-      if (!message) {
-        console.error('Usage: dotbot chat "your message"');
+      const chatMessage = args.positionals.slice(1).join(' ');
+      if (!chatMessage) {
+        console.error('Usage: dotbot "your message"');
         process.exit(1);
       }
-      await runChat(message, args);
+      await runChat(chatMessage, args);
       break;
 
     case 'repl':
@@ -449,9 +469,10 @@ async function main() {
       break;
 
     default:
-      console.error(`Unknown command: ${command}`);
-      printHelp();
-      process.exit(1);
+      // Default to chat if not a recognized command
+      const message = args.positionals.join(' ');
+      await runChat(message, args);
+      break;
   }
 }
 
