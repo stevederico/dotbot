@@ -41,7 +41,7 @@ async function loadModules() {
   agentLoop = mod.agentLoop;
 }
 
-const VERSION = '0.15.0';
+const VERSION = '0.16.0';
 const DEFAULT_PORT = 3000;
 const DEFAULT_DB = './dotbot.db';
 
@@ -58,22 +58,22 @@ Usage:
   dotbot serve [--port N]     Start HTTP server (default: ${DEFAULT_PORT})
 
 Options:
-  --provider, -p   AI provider: anthropic, openai, xai, ollama (default: anthropic)
-  --model, -m      Model name (default: claude-sonnet-4-5)
+  --provider, -p   AI provider: xai, anthropic, openai, ollama (default: xai)
+  --model, -m      Model name (default: grok-3)
   --db             SQLite database path (default: ${DEFAULT_DB})
   --port           Server port for 'serve' command (default: ${DEFAULT_PORT})
   --help, -h       Show this help
   --version, -v    Show version
 
 Environment Variables:
+  XAI_API_KEY          API key for xAI
   ANTHROPIC_API_KEY    API key for Anthropic
   OPENAI_API_KEY       API key for OpenAI
-  XAI_API_KEY          API key for xAI
   OLLAMA_BASE_URL      Base URL for Ollama (default: http://localhost:11434)
 
 Examples:
   dotbot chat "What's the weather in SF?"
-  dotbot repl --provider openai --model gpt-4o
+  dotbot repl --provider anthropic --model claude-sonnet-4-5
   dotbot serve --port 8080
 `);
 }
@@ -88,8 +88,8 @@ function parseCliArgs() {
       options: {
         help: { type: 'boolean', short: 'h', default: false },
         version: { type: 'boolean', short: 'v', default: false },
-        provider: { type: 'string', short: 'p', default: 'anthropic' },
-        model: { type: 'string', short: 'm', default: 'claude-sonnet-4-5' },
+        provider: { type: 'string', short: 'p', default: 'xai' },
+        model: { type: 'string', short: 'm', default: 'grok-3' },
         db: { type: 'string', default: DEFAULT_DB },
         port: { type: 'string', default: String(DEFAULT_PORT) },
       },

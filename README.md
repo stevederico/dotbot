@@ -12,7 +12,7 @@
       <img src="https://img.shields.io/github/stars/stevederico/dotbot?style=social" alt="GitHub stars">
     </a>
     <a href="https://github.com/stevederico/dotbot">
-      <img src="https://img.shields.io/badge/version-0.15.0-green" alt="version">
+      <img src="https://img.shields.io/badge/version-0.16.0-green" alt="version">
     </a>
     <img src="https://img.shields.io/badge/LOC-11k-orange" alt="Lines of Code">
   </p>
@@ -47,7 +47,7 @@ dotbot serve --port 3000
 
 **As a library:**
 ```javascript
-import { createAgent, SQLiteSessionStore, coreTools } from 'dotbot';
+import { createAgent, SQLiteSessionStore, coreTools } from '@stevederico/dotbot';
 ```
 
 <br />
@@ -58,10 +58,10 @@ import { createAgent, SQLiteSessionStore, coreTools } from 'dotbot';
 
 ```bash
 # Install globally
-npm install -g stevederico/dotbot
+npm install -g @stevederico/dotbot
 
 # Set your API key
-export ANTHROPIC_API_KEY=sk-ant-...
+export XAI_API_KEY=xai-...
 
 # Chat
 dotbot chat "Summarize the top 3 AI news stories today"
@@ -76,11 +76,11 @@ dotbot serve --port 3000
 ### Library Usage
 
 ```bash
-npm install stevederico/dotbot
+npm install @stevederico/dotbot
 ```
 
 ```javascript
-import { createAgent, SQLiteSessionStore, coreTools } from 'dotbot';
+import { createAgent, SQLiteSessionStore, coreTools } from '@stevederico/dotbot';
 
 const sessionStore = new SQLiteSessionStore();
 await sessionStore.init('./sessions.db');
@@ -88,7 +88,7 @@ await sessionStore.init('./sessions.db');
 const agent = createAgent({
   sessionStore,
   providers: {
-    anthropic: { apiKey: process.env.ANTHROPIC_API_KEY },
+    xai: { apiKey: process.env.XAI_API_KEY },
   },
   tools: coreTools,
 });
@@ -98,8 +98,8 @@ const session = await agent.createSession('user123');
 for await (const event of agent.chat({
   sessionId: session.id,
   message: 'Search for the latest AI news',
-  provider: 'anthropic',
-  model: 'claude-sonnet-4-5',
+  provider: 'xai',
+  model: 'grok-3',
 })) {
   if (event.type === 'text_delta') process.stdout.write(event.text);
 }
@@ -126,9 +126,9 @@ for await (const event of agent.chat({
 - **Weather** — Open-Meteo API (no key required)
 
 ### 🔌 **Multi-Provider Support**
+- **xAI Grok** — grok-3, with real-time web search and image generation
 - **Anthropic Claude** — claude-sonnet-4-5, claude-opus-4, etc.
 - **OpenAI** — gpt-4o, gpt-4-turbo, etc.
-- **xAI Grok** — grok-2, with real-time web search
 - **Cerebras** — ultra-fast inference
 - **Ollama** — local models, no API cost
 
@@ -147,7 +147,7 @@ for await (const event of agent.chat({
 ## CLI Reference
 
 ```
-dotbot v0.15.0 — AI agent CLI
+dotbot v0.16.0 — AI agent CLI
 
 Usage:
   dotbot chat "message"       Send a one-shot message
@@ -155,17 +155,17 @@ Usage:
   dotbot serve [--port N]     Start HTTP server (default: 3000)
 
 Options:
-  --provider, -p   AI provider: anthropic, openai, xai, ollama
-  --model, -m      Model name (default: claude-sonnet-4-5)
+  --provider, -p   AI provider: xai, anthropic, openai, ollama (default: xai)
+  --model, -m      Model name (default: grok-3)
   --db             SQLite database path (default: ./dotbot.db)
   --port           Server port for 'serve' command
   --help, -h       Show help
   --version, -v    Show version
 
 Environment Variables:
+  XAI_API_KEY          API key for xAI
   ANTHROPIC_API_KEY    API key for Anthropic
   OPENAI_API_KEY       API key for OpenAI
-  XAI_API_KEY          API key for xAI
   OLLAMA_BASE_URL      Base URL for Ollama (default: http://localhost:11434)
 ```
 
@@ -179,9 +179,9 @@ Environment Variables:
 const agent = createAgent({
   sessionStore,              // required — SessionStore instance
   providers: {
-    anthropic: { apiKey },   // API keys for each provider
+    xai: { apiKey },         // API keys for each provider
+    anthropic: { apiKey },
     openai: { apiKey },
-    xai: { apiKey },
     ollama: { baseUrl },
   },
   tools: coreTools,          // array of tool definitions
@@ -201,8 +201,8 @@ Streams a response as an async generator:
 for await (const event of agent.chat({
   sessionId: 'sess_123',
   message: 'Hello',
-  provider: 'anthropic',
-  model: 'claude-sonnet-4-5',
+  provider: 'xai',
+  model: 'grok-3',
   signal: abortController.signal,  // optional
   context: { userID: 'user123' },  // passed to tools
 })) {
@@ -259,8 +259,8 @@ await agent.chat({
   sessionId,
   message: `Create a task to audit our API endpoints.
             Break it into 5 steps, use auto mode.`,
-  provider: 'anthropic',
-  model: 'claude-sonnet-4-5',
+  provider: 'xai',
+  model: 'grok-3',
   context: { userID: 'user-123' },
 });
 // Step 1 runs → schedules Step 2 → ... → task complete

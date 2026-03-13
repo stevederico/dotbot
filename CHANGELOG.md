@@ -1,3 +1,9 @@
+0.16.0
+
+  Rename to @stevederico/dotbot
+  Default provider xAI/grok-3
+  Update examples to xAI
+
 0.15.0
 
   Add CLI (dotbot chat, repl, serve)
