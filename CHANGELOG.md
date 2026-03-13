@@ -1,3 +1,7 @@
+0.21
+
+  Fix spinner overlap bug
+
 0.20.2
 
   Add spinner for thinking/tools
