@@ -13,12 +13,12 @@ process.emit = function (event, error) {
  * dotbot CLI
  *
  * Usage:
- *   dotbot chat "What's the weather?"    One-shot query
- *   dotbot repl                          Interactive chat session
- *   dotbot serve --port 3000             Start HTTP server
- *   dotbot --help                        Show help
+ *   dotbot "What's the weather?"    One-shot query
+ *   dotbot                          Interactive chat
+ *   dotbot serve --port 3000        Start HTTP server
+ *   dotbot --help                   Show help
  *
- * Requires Node.js 22.5+ with --experimental-sqlite flag, or Node.js 23+
+ * Requires Node.js 22+
  */
 
 import { parseArgs } from 'node:util';
@@ -90,8 +90,8 @@ function printHelp() {
 dotbot v${VERSION} — AI agent CLI
 
 Usage:
-  dotbot "message"            Send a message (default command)
-  dotbot repl                 Interactive chat session
+  dotbot "message"            One-shot query
+  dotbot                      Interactive chat
   dotbot serve [--port N]     Start HTTP server (default: ${DEFAULT_PORT})
 
 Options:
@@ -111,8 +111,7 @@ Environment Variables:
 
 Examples:
   dotbot "What's the weather in SF?"
-  dotbot "Summarize the news" -p anthropic -m claude-sonnet-4-5
-  dotbot repl
+  dotbot
   dotbot serve --port 8080
 `);
 }
@@ -501,29 +500,15 @@ async function main() {
 
   const command = args.positionals[0];
 
-  switch (command) {
-    case 'chat':
-      const chatMessage = args.positionals.slice(1).join(' ');
-      if (!chatMessage) {
-        console.error('Usage: dotbot "your message"');
-        process.exit(1);
-      }
-      await runChat(chatMessage, args);
-      break;
-
-    case 'repl':
-      await runRepl(args);
-      break;
-
-    case 'serve':
-      await runServer(args);
-      break;
-
-    default:
-      // Default to chat if not a recognized command
-      const message = args.positionals.join(' ');
+  if (command === 'serve') {
+    await runServer(args);
+  } else {
+    const message = args.positionals.join(' ');
+    if (message) {
       await runChat(message, args);
-      break;
+    } else {
+      await runRepl(args);
+    }
   }
 }
 
