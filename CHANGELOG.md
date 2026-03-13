@@ -1,3 +1,11 @@
+0.20
+
+  Zero npm dependencies
+  Remove MongoDB support
+  Add custom CDP client
+  Add Chrome auto-download
+  Require Node.js 22+
+
 0.19
 
   Add test suite (node:test)
