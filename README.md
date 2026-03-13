@@ -22,15 +22,15 @@
 
 ## Why dotbot?
 
-**Everything you need for AI agents. Nothing you don't.**
+**90% smaller than OpenClaw. Half the size of nanobot. 4x the tools.**
 
 | | dotbot | nanobot | OpenClaw |
 |---|:---:|:---:|:---:|
-| **Lines of Code** | **11k** | 22k | 100k+ |
+| **Lines of Code** | **11k** | 22k | 1M+ |
 | **Tools** | **47** | ~10 | ~50 |
 | **Dependencies** | Minimal | Heavy | Heavy |
 
-dotbot is half the size of [nanobot](https://github.com/HKUDS/nanobot) with 4x the tools. No bloated abstractions. No dependency hell. Just a clean, focused agent that works.
+Everything you need for AI agents. Nothing you don't. No bloated abstractions. No dependency hell. Just a clean, focused agent that works.
 
 <br />
 
