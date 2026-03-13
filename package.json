@@ -1,9 +1,12 @@
 {
   "name": "dotbot",
-  "version": "0.14.1",
-  "description": "AI agent library for Node.js — streaming, multi-provider, tool execution, autonomous tasks",
+  "version": "0.15.0",
+  "description": "AI agent CLI and library for Node.js — streaming, multi-provider, tool execution, autonomous tasks",
   "type": "module",
   "main": "index.js",
+  "bin": {
+    "dotbot": "./bin/dotbot.js"
+  },
   "exports": {
     ".": "./index.js",
     "./core/*": "./core/*.js",
