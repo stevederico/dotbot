@@ -60,6 +60,27 @@ async function loadModules() {
 const DEFAULT_PORT = 3000;
 const DEFAULT_DB = './dotbot.db';
 
+// Spinner for tool execution feedback
+let spinnerInterval = null;
+
+function startSpinner() {
+  spinnerInterval = setInterval(() => {
+    process.stdout.write('.');
+  }, 300);
+}
+
+function stopSpinner(text = 'done') {
+  if (spinnerInterval) {
+    clearInterval(spinnerInterval);
+    spinnerInterval = null;
+    if (text) {
+      process.stdout.write(` ${text}\n`);
+    } else {
+      process.stdout.write('\n');
+    }
+  }
+}
+
 /**
  * Print help message.
  */
@@ -216,7 +237,8 @@ async function runChat(message, options) {
 
   const messages = [{ role: 'user', content: message }];
 
-  process.stdout.write('\n');
+  process.stdout.write('\n[thinking] ');
+  startSpinner();
 
   for await (const event of agentLoop({
     model: options.model,
@@ -227,18 +249,21 @@ async function runChat(message, options) {
   })) {
     switch (event.type) {
       case 'thinking':
-        if (event.text) {
-          process.stdout.write(`\x1b[2m${event.text}\x1b[0m`);
-        }
+        // Already showing spinner, ignore thinking events
         break;
       case 'text_delta':
+        stopSpinner('');  // Stop thinking spinner silently
         process.stdout.write(event.text);
         break;
       case 'tool_start':
         process.stdout.write(`\n[${event.name}] `);
+        startSpinner();
         break;
       case 'tool_result':
-        process.stdout.write(`done\n`);
+        stopSpinner('done');
+        break;
+      case 'tool_error':
+        stopSpinner('error');
         break;
       case 'error':
         console.error(`\nError: ${event.error}`);
@@ -301,7 +326,8 @@ async function runRepl(options) {
 
       messages.push({ role: 'user', content: trimmed });
 
-      process.stdout.write('\n');
+      process.stdout.write('\n[thinking] ');
+      startSpinner();
       let assistantContent = '';
 
       try {
@@ -314,21 +340,25 @@ async function runRepl(options) {
         })) {
           switch (event.type) {
             case 'thinking':
-              if (event.text) {
-                process.stdout.write(`\x1b[2m${event.text}\x1b[0m`);
-              }
+              // Already showing spinner, ignore thinking events
               break;
             case 'text_delta':
+              stopSpinner('');  // Stop thinking spinner silently
               process.stdout.write(event.text);
               assistantContent += event.text;
               break;
             case 'tool_start':
               process.stdout.write(`\n[${event.name}] `);
+              startSpinner();
               break;
             case 'tool_result':
-              process.stdout.write(`done\n`);
+              stopSpinner('done');
+              break;
+            case 'tool_error':
+              stopSpinner('error');
               break;
             case 'error':
+              stopSpinner();
               console.error(`\nError: ${event.error}`);
               break;
           }

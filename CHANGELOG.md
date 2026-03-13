@@ -1,3 +1,7 @@
+0.20.2
+
+  Add spinner for thinking/tools
+
 0.20.1
 
   Read version from package.json
