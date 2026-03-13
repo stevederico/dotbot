@@ -2,7 +2,7 @@
   <img src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExaGNjeWoweGx4bGYxZXNvYmtsYW80MjlxODFmeTN0cHE3cHN6emFoNiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gYWeVOiMmbg3kzCTq5/giphy.gif" alt="dotbot" width="200">
   <h1 align="center" style="border-bottom: none; margin-bottom: 0;">dotbot</h1>
   <h3 align="center" style="margin-top: 0; font-weight: normal;">
-    AI agent CLI and library for Node.js
+    The ultra-lean AI agent. 11k lines. 47 tools. Zero bloat.
   </h3>
   <p align="center">
     <a href="https://opensource.org/licenses/mit">
@@ -14,14 +14,29 @@
     <a href="https://github.com/stevederico/dotbot">
       <img src="https://img.shields.io/badge/version-0.15.0-green" alt="version">
     </a>
+    <img src="https://img.shields.io/badge/LOC-11k-orange" alt="Lines of Code">
   </p>
 </div>
 
 <br />
 
+## Why dotbot?
+
+**Everything you need for AI agents. Nothing you don't.**
+
+| | dotbot | nanobot | OpenClaw |
+|---|:---:|:---:|:---:|
+| **Lines of Code** | **11k** | 22k | 100k+ |
+| **Tools** | **47** | ~10 | ~50 |
+| **Dependencies** | Minimal | Heavy | Heavy |
+
+dotbot is half the size of [nanobot](https://github.com/HKUDS/nanobot) with 4x the tools. No bloated abstractions. No dependency hell. Just a clean, focused agent that works.
+
+<br />
+
 ## What is dotbot?
 
-dotbot is a **streaming AI agent** with tool execution, autonomous tasks, and scheduled jobs. Use it as a CLI for quick interactions or as a library to build AI-powered applications.
+A **streaming AI agent** with tool execution, autonomous tasks, and scheduled jobs. Use it as a CLI or as a library.
 
 **As a CLI:**
 ```bash
