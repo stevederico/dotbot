@@ -1,6 +1,6 @@
 {
   "name": "@dottie/agent",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Framework-agnostic AI agent system with tool execution, session management, and scheduled tasks",
   "type": "module",
   "main": "index.js",
@@ -20,7 +20,7 @@
     "xai",
     "chatbot",
     "autonomous",
-    "goals",
+    "tasks",
     "triggers"
   ],
   "author": "Steve Derico",

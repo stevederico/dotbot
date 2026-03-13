@@ -2,7 +2,7 @@
  * Cron task handler for dotbot.
  *
  * Extracted from dottie-os server.js to provide a reusable cron task executor
- * that handles session resolution, stale user gates, goal injection, and
+ * that handles session resolution, stale user gates, task injection, and
  * notification hooks.
  */
 
@@ -14,20 +14,20 @@ import { compactMessages } from './compaction.js';
  * @param {Object} options
  * @param {Object} options.sessionStore - Session store instance
  * @param {Object} options.cronStore - Cron store instance
- * @param {Object} options.goalStore - Goal store instance (optional)
+ * @param {Object} options.taskStore - Task store instance (optional)
  * @param {Object} options.memoryStore - Memory store instance (optional)
  * @param {Object} options.providers - Provider API keys for compaction
  * @param {number} [options.staleThresholdMs=86400000] - Skip heartbeat if user idle longer than this (default: 24h)
  * @param {Object} [options.hooks] - Host-specific hooks
  * @param {Function} [options.hooks.onNotification] - async (userId, { title, body, type }) => void
- * @param {Function} [options.hooks.goalFetcher] - async (userId, goalId) => goal object
- * @param {Function} [options.hooks.goalsFinder] - async (userId, filter) => goals array
+ * @param {Function} [options.hooks.taskFetcher] - async (userId, taskId) => task object
+ * @param {Function} [options.hooks.tasksFinder] - async (userId, filter) => tasks array
  * @returns {Function} Async handler for cron task execution
  */
 export function createCronHandler({
   sessionStore,
   cronStore,
-  goalStore,
+  taskStore,
   memoryStore,
   providers = {},
   staleThresholdMs = 24 * 60 * 60 * 1000,
@@ -48,10 +48,10 @@ export function createCronHandler({
    * Handle a cron task firing.
    *
    * @param {Object} task - Cron task object
-   * @param {string} task.name - Task name (e.g., "heartbeat", "goal_step")
+   * @param {string} task.name - Task name (e.g., "heartbeat", "task_step")
    * @param {string} [task.userId] - User ID for user-level tasks
    * @param {string} [task.sessionId] - Session ID for session-scoped tasks
-   * @param {string} [task.goalId] - Goal ID for goal_step tasks
+   * @param {string} [task.taskId] - Task ID for task_step cron jobs
    * @param {string} [task.prompt] - Task prompt
    */
   async function handleTaskFire(task) {
@@ -126,7 +126,7 @@ export function createCronHandler({
         userID: updatedSession.owner,
         sessionId: updatedSession.id,
         memoryStore,
-        goalStore,
+        taskStore,
       },
     })) {
       if (event.type === 'text_delta' && event.text) {
@@ -160,13 +160,13 @@ export function createCronHandler({
    * @returns {Promise<string|null>} Task content or null to skip
    */
   async function buildTaskContent(task, session) {
-    if (task.name === 'goal_step' && task.goalId) {
-      // Goal step continuation — inject targeted prompt for the specific goal
-      return await buildGoalStepContent(task, session);
+    if (task.name === 'task_step' && task.taskId) {
+      // Task step continuation — inject targeted prompt for the specific task
+      return await buildTaskStepContent(task, session);
     }
 
     if (task.name === 'heartbeat' && session.owner) {
-      // Heartbeat — check for auto-mode goals with pending steps
+      // Heartbeat — check for auto-mode tasks with pending steps
       return await buildHeartbeatContent(task, session);
     }
 
@@ -175,82 +175,82 @@ export function createCronHandler({
   }
 
   /**
-   * Build content for a goal_step task.
+   * Build content for a task_step cron job.
    */
-  async function buildGoalStepContent(task, session) {
+  async function buildTaskStepContent(task, session) {
     try {
-      let goal;
-      if (hooks.goalFetcher) {
-        goal = await hooks.goalFetcher(session.owner, task.goalId);
-      } else if (goalStore) {
-        goal = await goalStore.getGoal(session.owner, task.goalId);
+      let taskDoc;
+      if (hooks.taskFetcher) {
+        taskDoc = await hooks.taskFetcher(session.owner, task.taskId);
+      } else if (taskStore) {
+        taskDoc = await taskStore.getTask(session.owner, task.taskId);
       }
 
-      if (!goal) {
-        console.log(`[cron] goal_step: goal ${task.goalId} not found, skipping`);
+      if (!taskDoc) {
+        console.log(`[cron] task_step: task ${task.taskId} not found, skipping`);
         return null;
       }
 
-      if (goal.status === 'completed' || goal.status === 'abandoned') {
-        console.log(`[cron] goal_step: goal ${task.goalId} already ${goal.status}, skipping`);
+      if (taskDoc.status === 'completed' || taskDoc.status === 'abandoned') {
+        console.log(`[cron] task_step: task ${task.taskId} already ${taskDoc.status}, skipping`);
         return null;
       }
 
-      const nextStep = goal.steps?.find(s => !s.done);
+      const nextStep = taskDoc.steps?.find(s => !s.done);
       if (!nextStep) {
-        console.log(`[cron] goal_step: all steps done for goal ${task.goalId}, skipping`);
+        console.log(`[cron] task_step: all steps done for task ${task.taskId}, skipping`);
         return null;
       }
 
-      const doneCount = goal.steps.filter(s => s.done).length;
-      return `[Goal Work] Continue auto-executing goal "${goal.description}" (${doneCount}/${goal.steps.length} steps done). Call goal_work with goal_id "${task.goalId}" to execute the next step.`;
+      const doneCount = taskDoc.steps.filter(s => s.done).length;
+      return `[Task Work] Continue auto-executing task "${taskDoc.description}" (${doneCount}/${taskDoc.steps.length} steps done). Call task_work with task_id "${task.taskId}" to execute the next step.`;
     } catch (err) {
-      console.error('[cron] goal_step error:', err.message);
+      console.error('[cron] task_step error:', err.message);
       return null;
     }
   }
 
   /**
-   * Build content for a heartbeat task.
+   * Build content for a heartbeat cron job.
    */
   async function buildHeartbeatContent(task, session) {
     let taskContent = `[Heartbeat] ${task.prompt}`;
 
     try {
-      let goals = [];
-      if (hooks.goalsFinder) {
-        goals = await hooks.goalsFinder(session.owner, { status: ['pending', 'in_progress'] });
-      } else if (goalStore) {
-        goals = await goalStore.findGoals(session.owner, { status: ['pending', 'in_progress'] });
+      let tasks = [];
+      if (hooks.tasksFinder) {
+        tasks = await hooks.tasksFinder(session.owner, { status: ['pending', 'in_progress'] });
+      } else if (taskStore) {
+        tasks = await taskStore.findTasks(session.owner, { status: ['pending', 'in_progress'] });
       }
 
-      if (goals.length > 0) {
-        // Check if any goal is in auto mode with pending steps
-        const autoGoal = goals.find(g => g.mode === 'auto' && g.steps?.some(s => !s.done));
-        if (autoGoal) {
-          const doneCount = autoGoal.steps.filter(s => s.done).length;
-          const nextStep = autoGoal.steps.find(s => !s.done);
-          taskContent = `[Heartbeat] Auto-mode goal "${autoGoal.description}" has pending steps (${doneCount}/${autoGoal.steps.length} done). Call goal_work with goal_id "${autoGoal._id || autoGoal.id}" to execute: "${nextStep.text}"`;
+      if (tasks.length > 0) {
+        // Check if any task is in auto mode with pending steps
+        const autoTask = tasks.find(t => t.mode === 'auto' && t.steps?.some(s => !s.done));
+        if (autoTask) {
+          const doneCount = autoTask.steps.filter(s => s.done).length;
+          const nextStep = autoTask.steps.find(s => !s.done);
+          taskContent = `[Heartbeat] Auto-mode task "${autoTask.description}" has pending steps (${doneCount}/${autoTask.steps.length} done). Call task_work with task_id "${autoTask._id || autoTask.id}" to execute: "${nextStep.text}"`;
         } else {
-          // List all active goals
-          const lines = goals.map(g => {
-            let line = `• [${g.priority}] ${g.description}`;
-            if (g.mode) line += ` [${g.mode}]`;
-            if (g.deadline) line += ` (due: ${g.deadline})`;
-            if (g.steps && g.steps.length > 0) {
-              const done = g.steps.filter(s => s.done).length;
-              line += ` (${done}/${g.steps.length} steps)`;
-              for (const step of g.steps) {
+          // List all active tasks
+          const lines = tasks.map(t => {
+            let line = `• [${t.priority}] ${t.description}`;
+            if (t.mode) line += ` [${t.mode}]`;
+            if (t.deadline) line += ` (due: ${t.deadline})`;
+            if (t.steps && t.steps.length > 0) {
+              const done = t.steps.filter(s => s.done).length;
+              line += ` (${done}/${t.steps.length} steps)`;
+              for (const step of t.steps) {
                 line += `\n  ${step.done ? '[x]' : '[ ]'} ${step.text}`;
               }
             }
             return line;
           });
-          taskContent += `\n\nActive goals:\n${lines.join('\n')}`;
+          taskContent += `\n\nActive tasks:\n${lines.join('\n')}`;
         }
       }
     } catch (err) {
-      console.error('[cron] failed to fetch goals for heartbeat:', err.message);
+      console.error('[cron] failed to fetch tasks for heartbeat:', err.message);
     }
 
     return taskContent;

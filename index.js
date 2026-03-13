@@ -17,10 +17,10 @@ import {
   weatherTools,
   notifyTools,
   createBrowserTools,
+  taskTools,
   goalTools,
   triggerTools,
   jobTools,
-  taskTools,
   cronTools,
   eventTools,
   appgenTools,
@@ -40,6 +40,10 @@ export {
   HEARTBEAT_INTERVAL_MS,
   HEARTBEAT_PROMPT,
   runWithConcurrency,
+  TaskStore,
+  MongoTaskStore,
+  SQLiteTaskStore,
+  // Backwards compatibility aliases
   GoalStore,
   MongoGoalStore,
   SQLiteGoalStore,
@@ -65,10 +69,10 @@ export {
   notifyTools,
   browserTools,
   createBrowserTools,
-  goalTools,
+  taskTools,
+  goalTools,   // backwards compatibility alias
   triggerTools,
   jobTools,
-  taskTools,   // backwards compatibility alias
   cronTools,   // backwards compatibility alias
   eventTools,
   appgenTools,
@@ -106,7 +110,7 @@ export { createTriggerHandler } from './core/trigger_handler.js';
  * @param {Function} [options.systemPrompt] - System prompt builder: (agentName, agentPersonality, timestamp) => string
  * @param {Array} [options.tools] - Tool definitions (defaults to coreTools)
  * @param {CronStore} [options.cronStore] - Optional cron storage backend for scheduled tasks
- * @param {GoalStore} [options.goalStore] - Optional goal storage backend for multi-step autonomous execution
+ * @param {TaskStore} [options.taskStore] - Optional task storage backend for multi-step autonomous execution
  * @param {TriggerStore} [options.triggerStore] - Optional trigger storage backend for event-driven responses
  * @param {SQLiteMemoryStore} [options.memoryStore] - Optional memory storage backend for long-term memory
  * @param {EventStore} [options.eventStore] - Optional event storage backend for usage analytics
@@ -120,7 +124,7 @@ export function createAgent({
   systemPrompt,
   tools = coreTools,
   cronStore = null,
-  goalStore = null,
+  taskStore = null,
   triggerStore = null,
   memoryStore = null,
   eventStore = null,
@@ -146,7 +150,7 @@ export function createAgent({
       ...weatherTools,
       ...notifyTools,
       ...customBrowserTools,
-      ...goalTools,
+      ...taskTools,
       ...triggerTools,
       ...jobTools,
       ...eventTools,
@@ -177,7 +181,7 @@ export function createAgent({
         ...context,
         providers,
         cronStore,
-        goalStore,
+        taskStore,
         triggerStore,
         memoryStore,
         eventStore,
@@ -299,12 +303,12 @@ export function createAgent({
     },
 
     /**
-     * Get goal store (if configured)
+     * Get task store (if configured)
      *
-     * @returns {GoalStore|null} Goal store instance
+     * @returns {TaskStore|null} Task store instance
      */
-    getGoalStore() {
-      return goalStore;
+    getTaskStore() {
+      return taskStore;
     },
 
     /**

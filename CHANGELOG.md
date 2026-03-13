@@ -1,3 +1,17 @@
+0.14.0
+
+  Rename Goal to Task throughout
+  Add full audit trail logging
+  Add configurable maxTurns param
+  Add max_tokens to API calls
+  Add upsertSession to SQLiteAdapter
+  Add updateTitle to SQLiteAdapter
+  Add smarter title generation
+  Add Morning Brief cron feature
+  Add goal_id to task_id migration
+  Update browser tool description
+  Update web search tool description
+
 0.13.0
 
   Rename taskTools to jobTools

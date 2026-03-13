@@ -1,21 +1,21 @@
 import crypto from 'crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { GoalStore } from './GoalStore.js';
+import { TaskStore } from './TaskStore.js';
 
 /**
- * SQLite-backed GoalStore implementation
+ * SQLite-backed TaskStore implementation
  *
- * Uses Node.js 22.5+ built-in sqlite module for zero-dependency goal storage.
+ * Uses Node.js 22.5+ built-in sqlite module for zero-dependency task storage.
  * Dates stored as INTEGER (Unix ms), steps as JSON TEXT column.
  */
-export class SQLiteGoalStore extends GoalStore {
+export class SQLiteTaskStore extends TaskStore {
   constructor() {
     super();
     this.db = null;
   }
 
   /**
-   * Initialize SQLite goal store
+   * Initialize SQLite task store
    *
    * @param {Object} config - Configuration object
    * @param {string} config.dbPath - Path to SQLite database file
@@ -23,8 +23,26 @@ export class SQLiteGoalStore extends GoalStore {
   async init({ dbPath }) {
     this.db = new DatabaseSync(dbPath);
 
+    // Migration: goals → tasks table
+    const goalsExists = this.db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='goals'"
+    ).get();
+    const tasksExists = this.db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'"
+    ).get();
+
+    if (goalsExists && !tasksExists) {
+      console.log('[tasks] migrating goals table to tasks...');
+      this.db.exec('ALTER TABLE goals RENAME TO tasks');
+      // Also rename indexes
+      this.db.exec('DROP INDEX IF EXISTS idx_goals_user_status');
+      this.db.exec('DROP INDEX IF EXISTS idx_goals_user_category');
+      this.db.exec('DROP INDEX IF EXISTS idx_goals_user_priority');
+      this.db.exec('DROP INDEX IF EXISTS idx_goals_user_deadline');
+    }
+
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS goals (
+      CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         description TEXT NOT NULL,
@@ -41,30 +59,30 @@ export class SQLiteGoalStore extends GoalStore {
         last_worked_at INTEGER
       );
 
-      CREATE INDEX IF NOT EXISTS idx_goals_user_status ON goals(user_id, status);
-      CREATE INDEX IF NOT EXISTS idx_goals_user_category ON goals(user_id, category);
-      CREATE INDEX IF NOT EXISTS idx_goals_user_priority ON goals(user_id, priority);
-      CREATE INDEX IF NOT EXISTS idx_goals_user_deadline ON goals(user_id, deadline);
+      CREATE INDEX IF NOT EXISTS idx_tasks_user_status ON tasks(user_id, status);
+      CREATE INDEX IF NOT EXISTS idx_tasks_user_category ON tasks(user_id, category);
+      CREATE INDEX IF NOT EXISTS idx_tasks_user_priority ON tasks(user_id, priority);
+      CREATE INDEX IF NOT EXISTS idx_tasks_user_deadline ON tasks(user_id, deadline);
     `);
 
-    console.log('[goals] SQLiteGoalStore initialized');
+    console.log('[tasks] SQLiteTaskStore initialized');
   }
 
   /**
-   * Create a new goal
+   * Create a new task
    *
    * @param {Object} params
    * @param {string} params.userId - Owner user ID
-   * @param {string} params.description - Goal description
+   * @param {string} params.description - Task description
    * @param {Array<string|Object>} [params.steps=[]] - Step descriptions or step objects
-   * @param {string} [params.category='general'] - Goal category
+   * @param {string} [params.category='general'] - Task category
    * @param {string} [params.priority='medium'] - Priority: low, medium, high
    * @param {number|null} [params.deadline=null] - Unix ms deadline or null
    * @param {string} [params.mode='auto'] - Execution mode: auto or manual
-   * @returns {Promise<Object>} Created goal document
+   * @returns {Promise<Object>} Created task document
    */
-  async createGoal({ userId, description, steps = [], category = 'general', priority = 'medium', deadline = null, mode = 'auto' }) {
-    if (!this.db) throw new Error('Goals not initialized. Call init() first.');
+  async createTask({ userId, description, steps = [], category = 'general', priority = 'medium', deadline = null, mode = 'auto' }) {
+    if (!this.db) throw new Error('Tasks not initialized. Call init() first.');
 
     const normalizedSteps = steps.map(step => {
       if (typeof step === 'string') {
@@ -88,7 +106,7 @@ export class SQLiteGoalStore extends GoalStore {
     });
 
     const now = Date.now();
-    const goal = {
+    const task = {
       id: crypto.randomUUID(),
       userId,
       description,
@@ -106,44 +124,44 @@ export class SQLiteGoalStore extends GoalStore {
     };
 
     const stmt = this.db.prepare(`
-      INSERT INTO goals (id, user_id, description, steps, category, priority, deadline, mode, status, current_step, progress, created_at, updated_at, last_worked_at)
+      INSERT INTO tasks (id, user_id, description, steps, category, priority, deadline, mode, status, current_step, progress, created_at, updated_at, last_worked_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
-      goal.id,
-      goal.userId,
-      goal.description,
-      JSON.stringify(goal.steps),
-      goal.category,
-      goal.priority,
-      goal.deadline,
-      goal.mode,
-      goal.status,
-      goal.currentStep,
-      goal.progress,
-      goal.createdAt,
-      goal.updatedAt,
-      goal.lastWorkedAt
+      task.id,
+      task.userId,
+      task.description,
+      JSON.stringify(task.steps),
+      task.category,
+      task.priority,
+      task.deadline,
+      task.mode,
+      task.status,
+      task.currentStep,
+      task.progress,
+      task.createdAt,
+      task.updatedAt,
+      task.lastWorkedAt
     );
 
-    return goal;
+    return task;
   }
 
   /**
-   * Get goals for a user, optionally filtered by status/category/priority
+   * Get tasks for a user, optionally filtered by status/category/priority
    *
    * @param {string} userId - User ID
    * @param {Object} [filters={}] - Optional filters
    * @param {string} [filters.status] - Filter by status
    * @param {string} [filters.category] - Filter by category
    * @param {string} [filters.priority] - Filter by priority
-   * @returns {Promise<Array>} Goal list with computed progress
+   * @returns {Promise<Array>} Task list with computed progress
    */
-  async getGoals(userId, filters = {}) {
-    if (!this.db) throw new Error('Goals not initialized. Call init() first.');
+  async getTasks(userId, filters = {}) {
+    if (!this.db) throw new Error('Tasks not initialized. Call init() first.');
 
-    let sql = 'SELECT * FROM goals WHERE user_id = ?';
+    let sql = 'SELECT * FROM tasks WHERE user_id = ?';
     const params = [userId];
 
     if (filters.status) {
@@ -165,42 +183,42 @@ export class SQLiteGoalStore extends GoalStore {
     const rows = stmt.all(...params);
 
     return rows.map(row => {
-      const goal = this._rowToGoal(row);
-      goal.progress = this._calculateProgress(goal);
-      return goal;
+      const task = this._rowToTask(row);
+      task.progress = this._calculateProgress(task);
+      return task;
     });
   }
 
   /**
-   * Get a single goal by ID
+   * Get a single task by ID
    *
    * @param {string} userId - User ID
-   * @param {string} goalId - Goal UUID
-   * @returns {Promise<Object|null>} Goal document or null
+   * @param {string} taskId - Task UUID
+   * @returns {Promise<Object|null>} Task document or null
    */
-  async getGoal(userId, goalId) {
-    if (!this.db) throw new Error('Goals not initialized. Call init() first.');
+  async getTask(userId, taskId) {
+    if (!this.db) throw new Error('Tasks not initialized. Call init() first.');
 
-    const stmt = this.db.prepare('SELECT * FROM goals WHERE id = ? AND user_id = ?');
-    const row = stmt.get(goalId, userId);
+    const stmt = this.db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ?');
+    const row = stmt.get(taskId, userId);
 
     if (!row) return null;
 
-    const goal = this._rowToGoal(row);
-    goal.progress = this._calculateProgress(goal);
-    return goal;
+    const task = this._rowToTask(row);
+    task.progress = this._calculateProgress(task);
+    return task;
   }
 
   /**
-   * Update a goal with allowed fields
+   * Update a task with allowed fields
    *
    * @param {string} userId - User ID
-   * @param {string} goalId - Goal UUID
+   * @param {string} taskId - Task UUID
    * @param {Object} updates - Fields to update
    * @returns {Promise<Object>} Result with changes count
    */
-  async updateGoal(userId, goalId, updates) {
-    if (!this.db) throw new Error('Goals not initialized. Call init() first.');
+  async updateTask(userId, taskId, updates) {
+    if (!this.db) throw new Error('Tasks not initialized. Call init() first.');
 
     const allowedFields = [
       'description', 'steps', 'category', 'priority', 'deadline',
@@ -243,8 +261,8 @@ export class SQLiteGoalStore extends GoalStore {
     setClauses.push('updated_at = ?');
     values.push(Date.now());
 
-    const sql = `UPDATE goals SET ${setClauses.join(', ')} WHERE id = ? AND user_id = ?`;
-    values.push(goalId, userId);
+    const sql = `UPDATE tasks SET ${setClauses.join(', ')} WHERE id = ? AND user_id = ?`;
+    values.push(taskId, userId);
 
     const stmt = this.db.prepare(sql);
     const result = stmt.run(...values);
@@ -253,34 +271,34 @@ export class SQLiteGoalStore extends GoalStore {
   }
 
   /**
-   * Delete a goal
+   * Delete a task
    *
    * @param {string} userId - User ID
-   * @param {string} goalId - Goal UUID
+   * @param {string} taskId - Task UUID
    * @returns {Promise<Object>} Result with deletedCount
    */
-  async deleteGoal(userId, goalId) {
-    if (!this.db) throw new Error('Goals not initialized. Call init() first.');
+  async deleteTask(userId, taskId) {
+    if (!this.db) throw new Error('Tasks not initialized. Call init() first.');
 
-    const stmt = this.db.prepare('DELETE FROM goals WHERE id = ? AND user_id = ?');
-    const result = stmt.run(goalId, userId);
+    const stmt = this.db.prepare('DELETE FROM tasks WHERE id = ? AND user_id = ?');
+    const result = stmt.run(taskId, userId);
 
     return { deletedCount: result.changes };
   }
 
   /**
-   * Search goals by description or step text (case-insensitive LIKE)
+   * Search tasks by description or step text (case-insensitive LIKE)
    *
    * @param {string} userId - User ID
    * @param {string} query - Search text
-   * @returns {Promise<Array>} Matching goals with computed progress
+   * @returns {Promise<Array>} Matching tasks with computed progress
    */
-  async searchGoals(userId, query) {
-    if (!this.db) throw new Error('Goals not initialized. Call init() first.');
+  async searchTasks(userId, query) {
+    if (!this.db) throw new Error('Tasks not initialized. Call init() first.');
 
     const pattern = `%${query}%`;
     const stmt = this.db.prepare(`
-      SELECT * FROM goals
+      SELECT * FROM tasks
       WHERE user_id = ? AND (description LIKE ? OR steps LIKE ?)
       ORDER BY created_at DESC
     `);
@@ -288,44 +306,44 @@ export class SQLiteGoalStore extends GoalStore {
     const rows = stmt.all(userId, pattern, pattern);
 
     return rows.map(row => {
-      const goal = this._rowToGoal(row);
-      goal.progress = this._calculateProgress(goal);
-      return goal;
+      const task = this._rowToTask(row);
+      task.progress = this._calculateProgress(task);
+      return task;
     });
   }
 
   /**
-   * Get aggregate goal statistics for a user
+   * Get aggregate task statistics for a user
    *
    * @param {string} userId - User ID
    * @returns {Promise<Object>} Stats object with totals, breakdowns, and overdue count
    */
-  async getGoalStats(userId) {
-    if (!this.db) throw new Error('Goals not initialized. Call init() first.');
+  async getTaskStats(userId) {
+    if (!this.db) throw new Error('Tasks not initialized. Call init() first.');
 
-    const stmt = this.db.prepare('SELECT * FROM goals WHERE user_id = ?');
+    const stmt = this.db.prepare('SELECT * FROM tasks WHERE user_id = ?');
     const rows = stmt.all(userId);
-    const goals = rows.map(row => this._rowToGoal(row));
+    const tasks = rows.map(row => this._rowToTask(row));
 
     const now = Date.now();
     const stats = {
-      total: goals.length,
-      pending: goals.filter(g => g.status === 'pending').length,
-      in_progress: goals.filter(g => g.status === 'in_progress').length,
-      completed: goals.filter(g => g.status === 'completed').length,
+      total: tasks.length,
+      pending: tasks.filter(g => g.status === 'pending').length,
+      in_progress: tasks.filter(g => g.status === 'in_progress').length,
+      completed: tasks.filter(g => g.status === 'completed').length,
       by_category: {},
       by_priority: {},
       overdue: 0,
     };
 
-    for (const goal of goals) {
-      const cat = goal.category || 'general';
+    for (const task of tasks) {
+      const cat = task.category || 'general';
       stats.by_category[cat] = (stats.by_category[cat] || 0) + 1;
 
-      const pri = goal.priority || 'medium';
+      const pri = task.priority || 'medium';
       stats.by_priority[pri] = (stats.by_priority[pri] || 0) + 1;
 
-      if (goal.deadline && goal.deadline < now && goal.status !== 'completed') {
+      if (task.deadline && task.deadline < now && task.status !== 'completed') {
         stats.overdue++;
       }
     }
@@ -334,13 +352,13 @@ export class SQLiteGoalStore extends GoalStore {
   }
 
   /**
-   * Convert SQLite row (snake_case) to goal object (camelCase)
+   * Convert SQLite row (snake_case) to task object (camelCase)
    *
    * @private
    * @param {Object} row - Raw SQLite row
-   * @returns {Object} Goal object with parsed steps and camelCase keys
+   * @returns {Object} Task object with parsed steps and camelCase keys
    */
-  _rowToGoal(row) {
+  _rowToTask(row) {
     return {
       id: row.id,
       userId: row.user_id,
@@ -360,13 +378,13 @@ export class SQLiteGoalStore extends GoalStore {
   }
 
   /**
-   * Calculate progress percentage from a goal object
+   * Calculate progress percentage from a task object
    * @private
-   * @param {Object} goal - Goal with steps array
+   * @param {Object} task - Task with steps array
    * @returns {number} Progress 0-100
    */
-  _calculateProgress(goal) {
-    return this._calculateProgressFromSteps(goal.steps || []);
+  _calculateProgress(task) {
+    return this._calculateProgressFromSteps(task.steps || []);
   }
 
   /**
@@ -383,16 +401,18 @@ export class SQLiteGoalStore extends GoalStore {
 
   /**
    * Close the database connection and checkpoint WAL.
+   * Should be called on shutdown to ensure all changes are persisted.
    */
   close() {
     if (this.db) {
       try {
+        // Force WAL checkpoint before closing
         this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
         this.db.close();
         this.db = null;
-        console.log('[goals] SQLiteGoalStore closed');
+        console.log('[tasks] SQLiteTaskStore closed');
       } catch (err) {
-        console.error('[goals] Error closing database:', err.message);
+        console.error('[tasks] Error closing database:', err.message);
       }
     }
   }

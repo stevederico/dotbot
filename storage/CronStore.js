@@ -33,10 +33,10 @@ export class CronStore {
    * @param {string} params.runAt - ISO 8601 datetime for first run
    * @param {number} [params.intervalMs] - Repeat interval in milliseconds
    * @param {boolean} [params.recurring] - Whether task repeats
-   * @param {string} [params.goalId] - Associated goal ID
+   * @param {string} [params.taskId] - Associated task ID
    * @returns {Promise<Object>} Created task document
    */
-  async createTask({ name, prompt, sessionId, userId, runAt, intervalMs, recurring, goalId }) {
+  async createTask({ name, prompt, sessionId, userId, runAt, intervalMs, recurring, taskId }) {
     throw new Error('CronStore.createTask() must be implemented');
   }
 

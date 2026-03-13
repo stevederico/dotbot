@@ -1,7 +1,7 @@
 /**
  * Job Tools
  *
- * Agent tools for scheduling and managing jobs.
+ * Agent tools for scheduling and managing jobs (time-triggered scheduled prompts).
  * Each tool receives (input, signal, context) where context.cronStore
  * provides the storage backend.
  */
@@ -145,7 +145,7 @@ export const jobTools = [
       try {
         const task = await context.cronStore.getTask(input.job_id);
         if (!task) return `Error: job ${input.job_id} not found.`;
-        if (task.name === 'heartbeat') return "Error: cannot modify system jobs.";
+        if (task.name === 'heartbeat') return "Error: cannot delete system jobs.";
         await context.cronStore.deleteTask(input.job_id);
         return `Job ${input.job_id} cancelled.`;
       } catch (err) {
@@ -155,6 +155,5 @@ export const jobTools = [
   },
 ];
 
-// Backwards compatibility aliases
-export const taskTools = jobTools;
+// Backwards compatibility alias
 export const cronTools = jobTools;

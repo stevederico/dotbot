@@ -261,7 +261,7 @@ export function createBrowserTools(screenshotUrlPattern = (filename) => `/api/ag
   {
     name: "browser_navigate",
     description:
-      "Navigate a headless browser to a URL and return the page title and text content. Use this to visit websites, check pages, or start a multi-step browsing session.",
+      "Navigate a headless browser to a URL and return the page title and text content. PREFERRED tool for reading web pages — renders JavaScript so it works on dynamic sites (live scores, SPAs, dashboards). Use this instead of calling web_search multiple times.",
     parameters: {
       type: "object",
       properties: {
