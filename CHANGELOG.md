@@ -1,3 +1,7 @@
+0.20.1
+
+  Read version from package.json
+
 0.20
 
   Zero npm dependencies

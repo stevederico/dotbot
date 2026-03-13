@@ -22,8 +22,16 @@ process.emit = function (event, error) {
  */
 
 import { parseArgs } from 'node:util';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import * as readline from 'node:readline';
 import { createServer } from 'node:http';
+
+// Read version from package.json
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'));
+const VERSION = pkg.version;
 
 // Lazy-loaded modules (avoid SQLite import on --help)
 let stores = null;
@@ -49,8 +57,6 @@ async function loadModules() {
   AI_PROVIDERS = mod.AI_PROVIDERS;
   agentLoop = mod.agentLoop;
 }
-
-const VERSION = '0.19';
 const DEFAULT_PORT = 3000;
 const DEFAULT_DB = './dotbot.db';
 
