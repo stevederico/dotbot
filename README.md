@@ -12,7 +12,7 @@
       <img src="https://img.shields.io/github/stars/stevederico/dotbot?style=social" alt="GitHub stars">
     </a>
     <a href="https://github.com/stevederico/dotbot">
-      <img src="https://img.shields.io/badge/version-0.16.0-green" alt="version">
+      <img src="https://img.shields.io/badge/version-0.16.1-green" alt="version">
     </a>
     <img src="https://img.shields.io/badge/LOC-11k-orange" alt="Lines of Code">
   </p>
@@ -147,7 +147,7 @@ for await (const event of agent.chat({
 ## CLI Reference
 
 ```
-dotbot v0.16.0 — AI agent CLI
+dotbot v0.16.1 — AI agent CLI
 
 Usage:
   dotbot chat "message"       Send a one-shot message

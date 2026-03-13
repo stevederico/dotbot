@@ -17,11 +17,10 @@ export class SQLiteTriggerStore extends TriggerStore {
   /**
    * Initialize SQLite trigger store
    *
-   * @param {Object} config - Configuration object
-   * @param {string} config.dbPath - Path to SQLite database file
+   * @param {string} dbPath - Path to SQLite database file
    * @param {Object} [options={}] - Reserved for future use
    */
-  async init({ dbPath }, options = {}) {
+  async init(dbPath, options = {}) {
     this.db = new DatabaseSync(dbPath);
 
     this.db.exec(`

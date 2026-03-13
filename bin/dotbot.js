@@ -41,7 +41,7 @@ async function loadModules() {
   agentLoop = mod.agentLoop;
 }
 
-const VERSION = '0.16.0';
+const VERSION = '0.16.1';
 const DEFAULT_PORT = 3000;
 const DEFAULT_DB = './dotbot.db';
 
@@ -150,19 +150,19 @@ async function initStores(dbPath) {
   });
 
   const cronStore = new stores.SQLiteCronStore();
-  await cronStore.init({ dbPath });
+  await cronStore.init(dbPath);
 
   const taskStore = new stores.SQLiteTaskStore();
-  await taskStore.init({ dbPath });
+  await taskStore.init(dbPath);
 
   const triggerStore = new stores.SQLiteTriggerStore();
-  await triggerStore.init({ dbPath });
+  await triggerStore.init(dbPath);
 
   const memoryStore = new stores.SQLiteMemoryStore();
-  await memoryStore.init({ dbPath });
+  await memoryStore.init(dbPath);
 
   const eventStore = new stores.SQLiteEventStore();
-  await eventStore.init({ dbPath });
+  await eventStore.init(dbPath);
 
   return { sessionStore, cronStore, taskStore, triggerStore, memoryStore, eventStore };
 }

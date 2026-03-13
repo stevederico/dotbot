@@ -14,10 +14,9 @@ export class SQLiteMemoryStore {
   /**
    * Initialize SQLite memory store
    *
-   * @param {Object} config - Configuration object
-   * @param {string} config.dbPath - Path to SQLite database file
+   * @param {string} dbPath - Path to SQLite database file
    */
-  async init({ dbPath }) {
+  async init(dbPath) {
     this.db = new DatabaseSync(dbPath);
 
     this.db.exec(`
