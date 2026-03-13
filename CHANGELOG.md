@@ -1,3 +1,8 @@
+0.19
+
+  Add test suite (node:test)
+  Zero test dependencies
+
 0.18
 
   Add --verbose flag
