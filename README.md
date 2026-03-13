@@ -1,589 +1,70 @@
-# dotbot-sdk
+<div align="center">
+  <h1 align="center" style="border-bottom: none; margin-bottom: 0;">dotbot</h1>
+  <h3 align="center" style="margin-top: 0; font-weight: normal;">
+    AI agent CLI and library for Node.js
+  </h3>
+  <p align="center">
+    <a href="https://opensource.org/licenses/mit">
+      <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License">
+    </a>
+    <a href="https://github.com/stevederico/dotbot/stargazers">
+      <img src="https://img.shields.io/github/stars/stevederico/dotbot?style=social" alt="GitHub stars">
+    </a>
+    <a href="https://github.com/stevederico/dotbot">
+      <img src="https://img.shields.io/badge/version-0.15.0-green" alt="version">
+    </a>
+  </p>
+</div>
 
-**The AI agent engine for Node.js applications.**
+<br />
 
-dotbot-sdk is a framework-agnostic SDK that provides the core primitives for building AI agent systems: a streaming agent loop, pluggable storage, a composable tool registry, and orchestration for tasks, triggers, and scheduled jobs.
+## What is dotbot?
 
-It is the engine — not the application. You bring the server, the auth, the HTTP routes. dotbot-sdk handles everything below that.
+dotbot is a **streaming AI agent** with tool execution, autonomous tasks, and scheduled jobs. Use it as a CLI for quick interactions or as a library to build AI-powered applications.
 
-**Repository:** [github.com/stevederico/dotbot](https://github.com/stevederico/dotbot)
-**Package:** `dotbot`
-
----
-
-## Why an SDK?
-
-Most AI agent libraries are all-in-one applications — they make decisions about your deployment target, your chat platform, your provider, and your storage. dotbot-sdk makes none of those decisions. It gives you clean primitives and gets out of the way.
-
-```
-Your Application (Hono, Express, Fastify, Deno, etc.)
-        │
-        ▼
-   createAgent()          ← dotbot-sdk
-   ┌────────────────────────────────────────────┐
-   │  Agent Loop          streaming async gen   │
-   │  Tool Registry       47 built-in tools     │
-   │  SessionStore        pluggable adapters     │
-   │  CronStore           scheduled tasks        │
-   │  TaskStore           multi-step execution   │
-   │  TriggerStore        event-driven triggers  │
-   └────────────────────────────────────────────┘
-        │
-        ▼
-   AI Providers (Anthropic, OpenAI, xAI, Cerebras, Ollama)
-```
-
----
-
-## Features
-
-- **Framework-agnostic** — Works with any Node.js web framework (Hono, Express, Fastify, Deno)
-- **Provider-agnostic** — Runtime-injected API keys; switch providers per-request. Supports Anthropic, OpenAI, xAI, Cerebras, Ollama
-- **Provider failover** — Automatic retry on alternate provider if primary fails
-- **Database-agnostic** — Abstract store interfaces with MongoDB and SQLite adapters included
-- **Streaming-first** — `agent.chat()` is an async generator yielding typed SSE events (`text_delta`, `tool_start`, `tool_result`, `thinking`, `done`, `stats`)
-- **47 built-in tools** — Memory, web search, browser automation, file I/O, image generation, weather, tasks, triggers, jobs, and more
-- **Custom tools** — Register any tool with a simple `{ name, description, parameters, execute }` object
-- **Task system** — Multi-step autonomous workflows with priority, deadline, and auto-execution mode
-- **Event-driven triggers** — React to application events with agent responses, with cooldown control
-- **Scheduled tasks** — Agent-callable cron with interval strings (`1d`, `30m`) and recurring heartbeats
-- **Message normalization** — Canonical message format stored once, converted to provider wire format just-in-time
-- **Context compaction** — Token estimation and automatic message summarization near context limits
-- **Session management** — Multi-session per user, with full conversation history
-
----
-
-## Installation
-
+**As a CLI:**
 ```bash
-# npm
-npm install dotbot
-
-# From local path (development)
-npm install file:/path/to/dotbot
+dotbot chat "What's the weather in San Francisco?"
+dotbot repl
+dotbot serve --port 3000
 ```
 
----
+**As a library:**
+```javascript
+import { createAgent, SQLiteSessionStore, coreTools } from 'dotbot';
+```
+
+<br />
 
 ## Quick Start
 
-```javascript
-import {
-  createAgent,
-  SQLiteSessionStore,
-  coreTools
-} from 'dotbot';
+### CLI Usage
 
-// Initialize storage
-const sessionStore = new SQLiteSessionStore();
-await sessionStore.init('./sessions.db', {
-  prefsFetcher: async (userId) => ({ agentName: 'Dottie', agentPersonality: '' }),
-});
+```bash
+# Install globally
+npm install -g stevederico/dotbot
 
-// Create agent
-const agent = createAgent({
-  sessionStore,
-  providers: {
-    anthropic: { apiKey: process.env.ANTHROPIC_API_KEY },
-    openai:    { apiKey: process.env.OPENAI_API_KEY },
-    xai:       { apiKey: process.env.XAI_API_KEY },
-    ollama:    { baseUrl: 'http://localhost:11434' },
-  },
-  tools: coreTools,
-});
+# Set your API key
+export ANTHROPIC_API_KEY=sk-ant-...
 
-// Create a session
-const session = await agent.createSession('user123', 'claude-sonnet-4-5', 'anthropic');
+# Chat
+dotbot chat "Summarize the top 3 AI news stories today"
 
-// Stream a response
-for await (const event of agent.chat({
-  sessionId: session.id,
-  message:   'Search for the latest AI news and summarize it',
-  provider:  'anthropic',
-  model:     'claude-sonnet-4-5',
-  context:   { userID: 'user123' },
-})) {
-  switch (event.type) {
-    case 'text_delta':  process.stdout.write(event.text); break;
-    case 'tool_start':  console.log(`[${event.name}]`, event.input); break;
-    case 'done':        console.log('\nDone'); break;
-  }
-}
+# Interactive REPL
+dotbot repl
+
+# Start HTTP server
+dotbot serve --port 3000
 ```
 
----
+### Library Usage
 
-## Package Structure
-
+```bash
+npm install stevederico/dotbot
 ```
-dotbot/
-├── index.js              # Main exports — createAgent() and all public APIs
-├── core/
-│   ├── agent.js          # Agent loop (async generator, streams SSE events)
-│   ├── events.js         # SSE event schemas and validation
-│   ├── compaction.js     # Message compaction and token estimation
-│   ├── normalize.js      # Message normalization (provider ↔ standard format)
-│   ├── failover.js       # Provider failover logic
-│   ├── init.js           # Unified initialization helper
-│   ├── cron_handler.js   # Cron task execution factory
-│   └── trigger_handler.js# Trigger event factory
-├── storage/
-│   ├── SessionStore.js   # Abstract session interface
-│   ├── SQLiteAdapter.js  # SQLite session adapter (Node.js 22.5+, zero deps)
-│   ├── MemoryStore.js    # In-memory adapter (dev/testing)
-│   ├── CronStore.js      # Abstract cron interface
-│   ├── TaskStore.js      # Abstract task interface
-│   ├── TriggerStore.js   # Abstract trigger interface
-│   └── Mongo*.js         # MongoDB adapters for all stores
-├── tools/                # 47 built-in tools across 13 categories
-│   ├── memory.js         # Long-term memory (save, search, update, delete)
-│   ├── web.js            # Web search and fetch
-│   ├── browser.js        # Playwright browser automation
-│   ├── images.js         # Image generation + shared helpers
-│   ├── appgen.js         # App generation tools + shared helpers
-│   ├── tasks.js          # Multi-step task execution
-│   ├── triggers.js       # Event-driven trigger management
-│   ├── jobs.js           # Scheduled job management
-│   └── ...
-└── utils/
-    └── providers.js      # Provider configurations (Anthropic, OpenAI, xAI, Ollama)
-```
-
-### Importing from Subpaths
-
-When importing from subpaths, omit the `.js` extension:
 
 ```javascript
-// ✅ Correct
-import { agentLoop } from 'dotbot/core/agent';
-import { toProviderFormat } from 'dotbot/core/normalize';
-
-// ❌ Wrong (causes "module not found")
-import { agentLoop } from 'dotbot/core/agent.js';
-```
-
----
-
-## MongoDB Setup
-
-For multi-user production deployments with full-text search:
-
-```javascript
-import {
-  createAgent,
-  MongoSessionStore,
-  MongoCronStore,
-  MongoTaskStore,
-  MongoTriggerStore,
-  coreTools
-} from 'dotbot';
-import { MongoClient } from 'mongodb';
-
-const client = await MongoClient.connect(process.env.MONGODB_URL);
-const db = client.db('myapp');
-
-const sessionStore = new MongoSessionStore();
-await sessionStore.init(db, {
-  prefsFetcher: async (userId) => ({ agentName: 'Dottie', agentPersonality: '' }),
-});
-
-const cronStore = new MongoCronStore();
-await cronStore.init(db, {
-  onTaskFire: async (task) => {
-    for await (const event of agent.chat({
-      sessionId: task.sessionId,
-      message:   task.prompt,
-      provider:  'anthropic',
-      model:     'claude-sonnet-4-5',
-    })) { /* handle events */ }
-  },
-});
-
-const taskStore = new MongoTaskStore();
-await taskStore.init(db);
-
-const triggerStore = new MongoTriggerStore();
-await triggerStore.init(db);
-
-const agent = createAgent({
-  sessionStore,
-  cronStore,
-  taskStore,
-  triggerStore,
-  providers: {
-    anthropic: { apiKey: process.env.ANTHROPIC_API_KEY },
-    openai:    { apiKey: process.env.OPENAI_API_KEY },
-  },
-  tools: coreTools,
-});
-```
-
----
-
-## API Reference
-
-### `createAgent(options)`
-
-Create an agent instance.
-
-```typescript
-createAgent({
-  sessionStore:        SessionStore,             // required
-  providers: {
-    anthropic?:        { apiKey: string },
-    openai?:           { apiKey: string },
-    xai?:              { apiKey: string },
-    cerebras?:         { apiKey: string },
-    ollama?:           { baseUrl: string },
-  },
-  tools?:              Tool[],                   // defaults to coreTools (47 tools)
-  systemPrompt?:       (name, personality, timestamp) => string,
-  cronStore?:          CronStore,
-  taskStore?:          TaskStore,
-  triggerStore?:       TriggerStore,
-  memoryStore?:        SQLiteMemoryStore,
-  screenshotUrlPattern?: (filename: string) => string,
-  compaction?:         { enabled: boolean, threshold: number, targetLength: number },
-})
-```
-
-Returns an agent API object:
-
-```typescript
-{
-  async *chat(options): AsyncGenerator<Event>,
-  async createSession(owner, model, provider): Promise<Session>,
-  async getSession(sessionId, owner): Promise<Session>,
-  async listSessions(owner): Promise<Session[]>,
-  async deleteSession(sessionId, owner): Promise<void>,
-  async clearSession(sessionId): Promise<void>,
-  getTools(): Tool[],
-  getCronStore(): CronStore | null,
-  getTaskStore(): TaskStore | null,
-  getTriggerStore(): TriggerStore | null,
-  getMemoryStore(): SQLiteMemoryStore | null,
-}
-```
-
----
-
-### `agent.chat(options)`
-
-Streams a response as an async generator of typed SSE events.
-
-```typescript
-agent.chat({
-  sessionId: string,      // required
-  message:   string,      // required
-  provider:  string,      // 'anthropic' | 'openai' | 'xai' | 'ollama'
-  model:     string,      // provider-specific model ID
-  signal?:   AbortSignal,
-  context?:  object,      // passed to all tool execute() calls
-})
-```
-
-#### SSE Event Types
-
-| Event | Schema | Description |
-|---|---|---|
-| `text_delta` | `{ type, text }` | Incremental text from model |
-| `thinking` | `{ type, text, hasNativeThinking }` | Model reasoning process |
-| `tool_start` | `{ type, name, input }` | Tool execution begins |
-| `tool_result` | `{ type, name, input, result }` | Tool completed successfully |
-| `tool_error` | `{ type, name, error }` | Tool execution failed |
-| `done` | `{ type, content }` | Agent loop complete |
-| `stats` | `{ type, model, inputTokens, outputTokens }` | Token usage (normalized field names) |
-| `followup` | `{ type, text }` | Suggested follow-up question |
-| `max_iterations` | `{ type, message }` | Iteration limit reached |
-| `error` | `{ type, error }` | Fatal error |
-
-All providers emit the same event schema — Anthropic/OpenAI differences are normalized internally.
-
----
-
-### SessionStore Interface
-
-All adapters implement:
-
-```typescript
-class SessionStore {
-  async init(db, options?)
-  async createSession(owner, model, provider): Promise<Session>
-  async getSession(sessionId, owner): Promise<Session | null>
-  async getSessionInternal(sessionId): Promise<Session | null>
-  async getOrCreateDefaultSession(owner): Promise<Session>
-  async saveSession(sessionId, messages, model, provider)
-  async addMessage(sessionId, message)
-  async setModel(sessionId, model)
-  async setProvider(sessionId, provider)
-  async clearSession(sessionId)
-  async listSessions(owner): Promise<Session[]>
-  async deleteSession(sessionId, owner)
-  trimMessages(messages, maxMessages): Message[]
-}
-```
-
-**Included adapters:**
-- `SQLiteSessionStore` — SQLite via Node.js 22.5+ built-in sqlite module (zero extra dependencies)
-- `MongoSessionStore` — MongoDB with full-text search support
-- `MemorySessionStore` — In-memory Map (dev and testing)
-
-**Session object:**
-```typescript
-{
-  id:        string,   // 'sess_abc123'
-  owner:     string,   // user ID
-  title:     string,
-  model:     string,   // 'claude-sonnet-4-5'
-  provider:  string,   // 'anthropic'
-  messages:  Message[],
-  createdAt: string,   // ISO timestamp
-  updatedAt: string,
-}
-```
-
----
-
-## Built-in Tools (47)
-
-### Memory (6)
-`memory_save`, `memory_search`, `memory_delete`, `memory_list`, `memory_read`, `memory_update`
-
-### Web (3)
-`web_search` (Grok Responses API or DuckDuckGo fallback), `web_fetch`, `grokipedia_search`
-
-### Code (1)
-`run_code` — Execute JavaScript in a sandboxed subprocess
-
-### Files (6)
-`file_read`, `file_write`, `file_list`, `file_delete`, `file_move`, `folder_create`
-
-### Messages (4)
-`message_list`, `message_send`, `message_read`, `message_delete`
-
-### Images (3)
-`image_generate` (xAI Grok Imagine), `image_list`, `image_search`
-
-### Weather (1)
-`weather_get` — Open-Meteo API (no key required)
-
-### Notify (1)
-`notify_user`
-
-### Browser (7)
-`browser_navigate`, `browser_read_page`, `browser_click`, `browser_type`, `browser_screenshot`, `browser_extract`, `browser_close`
-
-### Tasks (9)
-`task_create`, `task_list`, `task_plan`, `task_work`, `task_step_done`, `task_complete`, `task_delete`, `task_search`, `task_stats`
-
-### Triggers (4)
-`trigger_create`, `trigger_list`, `trigger_toggle`, `trigger_delete`
-
-### Jobs (4)
-`schedule_job`, `list_jobs`, `cancel_job`, `toggle_job` — Agent-callable scheduled job management
-
-### App Generation (2)
-`app_generate` — Generate React components from natural language prompts
-`app_validate` — Validate generated component code
-
----
-
-## Shared Helpers
-
-Some tools export standalone helper functions for use outside the agent loop (e.g., in HTTP endpoints).
-
-### Image Generation Helpers
-
-```javascript
-import {
-  generateImage,
-  extractVisualPrompt,
-  generateImageFromText,
-  GROK_IMAGINE_MODEL
-} from 'dotbot/tools/images';
-
-// Direct image generation
-const result = await generateImage('A sunset over mountains', apiKey);
-// { success: true, url: '...', prompt: '...' }
-
-// Extract visual themes from text, then generate
-const result = await generateImageFromText({ text: 'Long article...' }, apiKey);
-
-// Just extract the visual prompt
-const { prompt } = await extractVisualPrompt('Long article...', apiKey);
-```
-
-### App Generation Helpers
-
-```javascript
-import {
-  APP_GENERATION_PROMPT,
-  cleanGeneratedCode,
-  validateGeneratedCode,
-  extractAppName
-} from 'dotbot/tools/appgen';
-
-// Use the system prompt directly
-const messages = [
-  { role: 'system', content: APP_GENERATION_PROMPT },
-  { role: 'user', content: 'Create a todo app' }
-];
-
-// Clean AI-generated code
-const { code, windowSize } = cleanGeneratedCode(rawCode);
-
-// Validate before execution
-const { valid, error } = validateGeneratedCode(code);
-```
-
----
-
-## Custom Tools
-
-```javascript
-const myTools = [
-  {
-    name: 'get_inventory',
-    description: 'Get current inventory for a product SKU',
-    parameters: {
-      type: 'object',
-      properties: {
-        sku: { type: 'string', description: 'Product SKU' },
-      },
-      required: ['sku'],
-    },
-    execute: async ({ sku }, signal, context) => {
-      const db = context.databaseManager;
-      return await db.inventory.findOne({ sku });
-    },
-  },
-];
-
-const agent = createAgent({
-  sessionStore,
-  providers,
-  tools: [...coreTools, ...myTools],
-});
-```
-
-The `context` object passed to `execute()` is the same object you pass to `agent.chat()` — use it to inject databases, user state, or any request-scoped data.
-
----
-
-## Task System
-
-Tasks enable multi-step autonomous workflows. In `auto` mode the agent executes steps sequentially, scheduling each next step via CronStore automatically.
-
-```javascript
-// The agent creates the task and drives execution
-for await (const event of agent.chat({
-  sessionId,
-  message: `Create a task to audit our API endpoints and produce a security report.
-            Use 5 steps, auto mode.`,
-  provider: 'anthropic',
-  model:    'claude-sonnet-4-5',
-  context:  { userID: 'user-123' },
-})) {
-  console.log(event);
-}
-// Step 1 runs → schedules Step 2 → ... → task marked complete
-```
-
-**Requires:** `taskStore` and `cronStore` passed to `createAgent()`.
-
----
-
-## Event-Driven Triggers
-
-Triggers let the agent react to application events. You define what events mean; the library fires the agent when they occur.
-
-```javascript
-// Agent creates a trigger via chat
-for await (const event of agent.chat({
-  sessionId,
-  message: `Create a trigger for "order_placed" events.
-            Prompt: "A new order was placed. Check inventory and notify the fulfillment team."
-            Cooldown: 5 minutes.`,
-  ...
-})) {}
-
-// Later, from your application code:
-const triggers = await triggerStore.findMatchingTriggers(userId, 'order_placed');
-for (const trigger of triggers) {
-  for await (const event of agent.chat({
-    sessionId,
-    message: trigger.prompt,
-    ...
-  })) { /* stream to user */ }
-
-  await triggerStore.markTriggerFired(trigger._id.toString());
-}
-```
-
-**Requires:** `triggerStore` passed to `createAgent()`.
-
----
-
-## Message Normalization
-
-Messages are stored in a canonical standard format and converted to provider-specific wire format just-in-time before each API call. This means you can switch providers without reformatting stored history.
-
-```javascript
-import { toStandardFormat, toProviderFormat } from 'dotbot/core/normalize';
-
-// Normalize any provider's raw messages to standard format
-const standard = toStandardFormat(rawMessages);
-
-// Convert standard format to a specific provider's wire format
-const forAnthropic = toProviderFormat(standard, 'anthropic');
-const forOpenAI    = toProviderFormat(standard, 'openai');
-```
-
-**Standard assistant message:**
-```javascript
-{
-  role:       'assistant',
-  content:    'Here are the results.',
-  toolCalls:  [{ id, name, input, result, status: 'done' }],
-  thinking:   'I should search for recent data...',
-  images:     [{ url, prompt }],
-  _ts:        1700000000000,
-}
-```
-
----
-
-## Provider Support
-
-| Provider | Config Key | Auth | Notes |
-|---|---|---|---|
-| Anthropic Claude | `anthropic` | `apiKey` | Native thinking, 200k context |
-| OpenAI GPT | `openai` | `apiKey` | Function calling, JSON mode |
-| xAI Grok | `xai` | `apiKey` | Real-time web search, image generation |
-| Cerebras | `cerebras` | `apiKey` | Ultra-fast inference |
-| Ollama | `ollama` | `baseUrl` | Local inference, no API cost |
-
-Provider failover is automatic — if the primary fails (rate limit, error, timeout), the agent retries or switches.
-
-Each provider config includes an `envKey` field for environment variable lookup:
-```javascript
-import { AI_PROVIDERS } from 'dotbot';
-
-// AI_PROVIDERS.anthropic.envKey === 'ANTHROPIC_API_KEY'
-// AI_PROVIDERS.xai.envKey === 'XAI_API_KEY'
-const apiKey = process.env[AI_PROVIDERS[providerId].envKey];
-```
-
----
-
-## Hono Server Example
-
-```javascript
-import { Hono } from 'hono';
-import { streamSSE } from 'hono/streaming';
 import { createAgent, SQLiteSessionStore, coreTools } from 'dotbot';
-
-const app = new Hono();
 
 const sessionStore = new SQLiteSessionStore();
 await sessionStore.init('./sessions.db');
@@ -592,195 +73,292 @@ const agent = createAgent({
   sessionStore,
   providers: {
     anthropic: { apiKey: process.env.ANTHROPIC_API_KEY },
-    openai:    { apiKey: process.env.OPENAI_API_KEY },
   },
   tools: coreTools,
 });
 
-app.post('/api/chat', async (c) => {
-  const { sessionId, message, provider, model } = await c.req.json();
-  const userId = c.get('userId'); // from auth middleware
+const session = await agent.createSession('user123');
 
-  return streamSSE(c, async (stream) => {
-    for await (const event of agent.chat({
-      sessionId, message, provider, model,
-      context: { userID: userId },
-    })) {
-      await stream.writeSSE({ data: JSON.stringify(event), event: event.type });
-    }
-  });
-});
-
-app.get('/api/sessions',        async (c) => c.json(await agent.listSessions(c.get('userId'))));
-app.post('/api/sessions',       async (c) => { const { model, provider } = await c.req.json(); return c.json(await agent.createSession(c.get('userId'), model, provider)); });
-app.delete('/api/sessions/:id', async (c) => { await agent.deleteSession(c.req.param('id'), c.get('userId')); return c.json({ success: true }); });
-```
-
----
-
-## React Hook Example
-
-```javascript
-import { useState, useCallback } from 'react';
-
-function useAgentChat(sessionId) {
-  const [messages, setMessages]       = useState([]);
-  const [isStreaming, setIsStreaming]  = useState(false);
-  const [activeTool, setActiveTool]   = useState(null);
-
-  const sendMessage = useCallback(async (message, provider = 'anthropic', model = 'claude-sonnet-4-5') => {
-    setIsStreaming(true);
-    setMessages(prev => [...prev, { role: 'user', content: message }]);
-
-    let assistantText = '';
-
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId, message, provider, model }),
-    });
-
-    const reader  = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer    = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const event = JSON.parse(line.slice(6));
-
-          if (event.type === 'text_delta') {
-            assistantText += event.text;
-            setMessages(prev => {
-              const updated = [...prev];
-              const last = updated[updated.length - 1];
-              if (last?.role === 'assistant') {
-                updated[updated.length - 1] = { ...last, content: assistantText };
-              } else {
-                updated.push({ role: 'assistant', content: assistantText });
-              }
-              return updated;
-            });
-          } else if (event.type === 'tool_start') {
-            setActiveTool({ name: event.name, input: event.input });
-          } else if (event.type === 'tool_result') {
-            setActiveTool(null);
-          }
-        }
-      }
-    } finally {
-      setIsStreaming(false);
-      setActiveTool(null);
-    }
-  }, [sessionId]);
-
-  return { messages, sendMessage, isStreaming, activeTool };
+for await (const event of agent.chat({
+  sessionId: session.id,
+  message: 'Search for the latest AI news',
+  provider: 'anthropic',
+  model: 'claude-sonnet-4-5',
+})) {
+  if (event.type === 'text_delta') process.stdout.write(event.text);
 }
 ```
 
----
+<br />
 
-## Custom SessionStore
+## What's Included
 
-Implement the `SessionStore` interface for any database:
+### 🤖 **Streaming Agent Loop**
+- **Async generator** yields typed SSE events
+- **Multi-turn** conversations with tool execution
+- **Abort support** via AbortSignal
+- **Automatic retries** with provider failover
 
-```javascript
-import { SessionStore } from 'dotbot';
+### 🔧 **47 Built-in Tools**
+- **Memory** — save, search, update, delete long-term memory
+- **Web** — search, fetch, browser automation with Playwright
+- **Files** — read, write, list, delete, move files
+- **Images** — generate images via xAI Grok
+- **Tasks** — multi-step autonomous workflows
+- **Jobs** — scheduled prompts with cron-like intervals
+- **Triggers** — event-driven agent responses
+- **Weather** — Open-Meteo API (no key required)
 
-class PostgresSessionStore extends SessionStore {
-  constructor(pool) {
-    super();
-    this.pool = pool;
-  }
+### 🔌 **Multi-Provider Support**
+- **Anthropic Claude** — claude-sonnet-4-5, claude-opus-4, etc.
+- **OpenAI** — gpt-4o, gpt-4-turbo, etc.
+- **xAI Grok** — grok-2, with real-time web search
+- **Cerebras** — ultra-fast inference
+- **Ollama** — local models, no API cost
 
-  async init(options = {}) {
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        id UUID PRIMARY KEY, owner TEXT NOT NULL, title TEXT,
-        messages JSONB, model TEXT, provider TEXT,
-        created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW()
-      )
-    `);
-  }
+### 💾 **Pluggable Storage**
+- **SQLite** — zero dependencies with Node.js 22.5+
+- **MongoDB** — scalable with full-text search
+- **Memory** — in-memory for testing
 
-  async createSession(owner, model, provider) {
-    const id = crypto.randomUUID();
-    await this.pool.query(
-      'INSERT INTO sessions (id, owner, messages, model, provider) VALUES ($1, $2, $3, $4, $5)',
-      [id, owner, JSON.stringify([]), model, provider]
-    );
-    return { id, owner, messages: [], model, provider };
-  }
+### 📊 **Full Audit Trail**
+- **Every message** logged with full content
+- **Every tool call** logged with input/output
+- **Event store** for analytics and debugging
 
-  // ... implement remaining SessionStore methods
-}
+<br />
+
+## CLI Reference
+
+```
+dotbot v0.15.0 — AI agent CLI
+
+Usage:
+  dotbot chat "message"       Send a one-shot message
+  dotbot repl                 Interactive chat session
+  dotbot serve [--port N]     Start HTTP server (default: 3000)
+
+Options:
+  --provider, -p   AI provider: anthropic, openai, xai, ollama
+  --model, -m      Model name (default: claude-sonnet-4-5)
+  --db             SQLite database path (default: ./dotbot.db)
+  --port           Server port for 'serve' command
+  --help, -h       Show help
+  --version, -v    Show version
+
+Environment Variables:
+  ANTHROPIC_API_KEY    API key for Anthropic
+  OPENAI_API_KEY       API key for OpenAI
+  XAI_API_KEY          API key for xAI
+  OLLAMA_BASE_URL      Base URL for Ollama (default: http://localhost:11434)
 ```
 
----
+<br />
 
-## Best Practices
+## Library API
 
-**Choose the right SessionStore:**
-```javascript
-const sessionStore = new MemorySessionStore();     // dev/testing
-const sessionStore = new SQLiteSessionStore();     // single-process production
-const sessionStore = new MongoSessionStore();      // multi-process / scalable
-```
+### `createAgent(options)`
 
-**Handle errors in the stream:**
-```javascript
-try {
-  for await (const event of agent.chat({ ... })) {
-    if (event.type === 'error') { showError(event.error); break; }
-    handleEvent(event);
-  }
-} catch (err) {
-  console.error('Stream error:', err);
-}
-```
-
-**Cancel in-flight requests:**
-```javascript
-const controller = new AbortController();
-for await (const event of agent.chat({ ..., signal: controller.signal })) { ... }
-cancelButton.onclick = () => controller.abort();
-```
-
-**Enable compaction for long conversations:**
 ```javascript
 const agent = createAgent({
-  ...,
-  compaction: { enabled: true, threshold: 50, targetLength: 20 },
+  sessionStore,              // required — SessionStore instance
+  providers: {
+    anthropic: { apiKey },   // API keys for each provider
+    openai: { apiKey },
+    xai: { apiKey },
+    ollama: { baseUrl },
+  },
+  tools: coreTools,          // array of tool definitions
+  cronStore,                 // optional — for scheduled jobs
+  taskStore,                 // optional — for autonomous tasks
+  triggerStore,              // optional — for event triggers
+  memoryStore,               // optional — for long-term memory
+  eventStore,                // optional — for audit logging
 });
 ```
 
----
+### `agent.chat(options)`
 
-## Troubleshooting
+Streams a response as an async generator:
 
-**`sessionStore is not defined`** — Call `await sessionStore.init(...)` before `createAgent()`.
+```javascript
+for await (const event of agent.chat({
+  sessionId: 'sess_123',
+  message: 'Hello',
+  provider: 'anthropic',
+  model: 'claude-sonnet-4-5',
+  signal: abortController.signal,  // optional
+  context: { userID: 'user123' },  // passed to tools
+})) {
+  switch (event.type) {
+    case 'text_delta':  console.log(event.text); break;
+    case 'tool_start':  console.log(`[${event.name}]`); break;
+    case 'tool_result': console.log(event.result); break;
+    case 'done':        console.log('Complete'); break;
+  }
+}
+```
 
-**`Provider not configured`** — Ensure the provider key is in the `providers` object passed to `createAgent()`.
+### SSE Event Types
 
-**`Tool execution failed`** — Many tools require `userID` and `databaseManager` in `context`. Check that your `agent.chat()` call passes them.
+| Event | Fields | Description |
+|-------|--------|-------------|
+| `text_delta` | `text` | Incremental text from model |
+| `thinking` | `text` | Model reasoning (Claude) |
+| `tool_start` | `name`, `input` | Tool execution begins |
+| `tool_result` | `name`, `result` | Tool completed |
+| `tool_error` | `name`, `error` | Tool failed |
+| `done` | `content` | Agent loop complete |
+| `stats` | `inputTokens`, `outputTokens` | Token usage |
 
-**SSE stream stops prematurely** — Ensure your HTTP server supports streaming. For Hono, use `streamSSE()`. For Express, set `Content-Type: text/event-stream` and `Connection: keep-alive`.
+<br />
 
----
+## Built-in Tools (47)
+
+| Category | Tools |
+|----------|-------|
+| **Memory** (6) | `memory_save`, `memory_search`, `memory_delete`, `memory_list`, `memory_read`, `memory_update` |
+| **Web** (3) | `web_search`, `web_fetch`, `grokipedia_search` |
+| **Browser** (7) | `browser_navigate`, `browser_read_page`, `browser_click`, `browser_type`, `browser_screenshot`, `browser_extract`, `browser_close` |
+| **Files** (6) | `file_read`, `file_write`, `file_list`, `file_delete`, `file_move`, `folder_create` |
+| **Images** (3) | `image_generate`, `image_list`, `image_search` |
+| **Tasks** (9) | `task_create`, `task_list`, `task_plan`, `task_work`, `task_step_done`, `task_complete`, `task_delete`, `task_search`, `task_stats` |
+| **Triggers** (4) | `trigger_create`, `trigger_list`, `trigger_toggle`, `trigger_delete` |
+| **Jobs** (4) | `schedule_job`, `list_jobs`, `cancel_job`, `toggle_job` |
+| **Messages** (4) | `message_list`, `message_send`, `message_read`, `message_delete` |
+| **Code** (1) | `run_code` |
+| **Weather** (1) | `weather_get` |
+| **Notify** (1) | `notify_user` |
+| **App Gen** (2) | `app_generate`, `app_validate` |
+
+<br />
+
+## Task System
+
+Tasks enable multi-step autonomous workflows. In `auto` mode, the agent executes steps sequentially without user intervention.
+
+```javascript
+// Agent creates and executes a task
+await agent.chat({
+  sessionId,
+  message: `Create a task to audit our API endpoints.
+            Break it into 5 steps, use auto mode.`,
+  provider: 'anthropic',
+  model: 'claude-sonnet-4-5',
+  context: { userID: 'user-123' },
+});
+// Step 1 runs → schedules Step 2 → ... → task complete
+```
+
+**Requires:** `taskStore` and `cronStore` passed to `createAgent()`.
+
+<br />
+
+## Scheduled Jobs
+
+Jobs are cron-like scheduled prompts that fire automatically.
+
+```javascript
+// Agent schedules a daily job
+await agent.chat({
+  sessionId,
+  message: 'Schedule a daily job at 9am to check my calendar and summarize my day',
+  ...
+});
+```
+
+**Requires:** `cronStore` passed to `createAgent()`.
+
+<br />
+
+## Tech Stack
+
+| Technology | Purpose |
+|------------|---------|
+| **Node.js 22.5+** | Runtime with built-in SQLite |
+| **Playwright** | Browser automation |
+| **SQLite** | Default storage (zero deps) |
+| **MongoDB** | Scalable storage option |
+
+<br />
+
+## Package Structure
+
+```
+dotbot/
+├── bin/
+│   └── dotbot.js           # CLI entry point
+├── core/
+│   ├── agent.js            # Streaming agent loop
+│   ├── events.js           # SSE event schemas
+│   ├── compaction.js       # Context window management
+│   ├── normalize.js        # Message format conversion
+│   ├── cron_handler.js     # Scheduled job execution
+│   └── trigger_handler.js  # Event-driven triggers
+├── storage/
+│   ├── SessionStore.js     # Session interface
+│   ├── TaskStore.js        # Task interface
+│   ├── CronStore.js        # Job scheduling interface
+│   ├── TriggerStore.js     # Trigger interface
+│   ├── SQLite*.js          # SQLite adapters
+│   └── Mongo*.js           # MongoDB adapters
+├── tools/                  # 47 built-in tools
+│   ├── memory.js
+│   ├── web.js
+│   ├── browser.js
+│   ├── tasks.js
+│   ├── jobs.js
+│   └── ...
+└── utils/
+    └── providers.js        # AI provider configs
+```
+
+<br />
+
+## Requirements
+
+- **Node.js 22.5+** with `--experimental-sqlite` flag, or **Node.js 23+**
+- API key for at least one provider (Anthropic, OpenAI, xAI) or local Ollama
+
+<br />
+
+## Contributing
+
+```bash
+git clone https://github.com/stevederico/dotbot
+cd dotbot
+node bin/dotbot.js --help
+```
+
+<br />
+
+## Community & Support
+
+- **X**: [@stevederico](https://x.com/stevederico)
+- **Issues**: [GitHub Issues](https://github.com/stevederico/dotbot/issues)
+
+<br />
+
+## Related Projects
+
+- [dottie-desktop](https://github.com/stevederico/dottie-desktop) — macOS AI assistant powered by dotbot
+- [skateboard](https://github.com/stevederico/skateboard) — React starter with auth, Stripe, and SQLite
+
+<br />
 
 ## License
 
-MIT
+MIT License — use it however you want. See [LICENSE](LICENSE) for details.
 
-## Links
+<br />
 
-- **Issues:** https://github.com/stevederico/dotbot/issues
-- **Example app (dottie-os):** https://github.com/stevederico/dottie-os
+---
+
+<div align="center">
+  <p>
+    Built with care by <a href="https://github.com/stevederico">Steve Derico</a>
+  </p>
+  <p>
+    <a href="https://github.com/stevederico/dotbot">Star on GitHub</a> — it helps!
+  </p>
+</div>
