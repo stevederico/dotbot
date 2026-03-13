@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { SessionStore } from './SessionStore.js';
-import { defaultSystemPrompt } from './MongoAdapter.js';
+import { defaultSystemPrompt } from './SQLiteAdapter.js';
 import { toStandardFormat } from '../core/normalize.js';
 
 /**

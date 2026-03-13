@@ -2,7 +2,8 @@
   <img src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExaGNjeWoweGx4bGYxZXNvYmtsYW80MjlxODFmeTN0cHE3cHN6emFoNiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gYWeVOiMmbg3kzCTq5/giphy.gif" alt="dotbot" width="200">
   <h1 align="center" style="border-bottom: none; margin-bottom: 0;">dotbot</h1>
   <h3 align="center" style="margin-top: 0; font-weight: normal;">
-    The ultra-lean AI agent. 11k lines. 47 tools. Zero bloat.
+    The ultra-lean AI agent.<br>
+    11k lines. 47 tools. 0 dependencies.
   </h3>
   <p align="center">
     <a href="https://opensource.org/licenses/mit">
@@ -12,7 +13,7 @@
       <img src="https://img.shields.io/github/stars/stevederico/dotbot?style=social" alt="GitHub stars">
     </a>
     <a href="https://github.com/stevederico/dotbot">
-      <img src="https://img.shields.io/badge/version-0.19-green" alt="version">
+      <img src="https://img.shields.io/badge/version-0.20-green" alt="version">
     </a>
     <img src="https://img.shields.io/badge/LOC-11k-orange" alt="Lines of Code">
   </p>

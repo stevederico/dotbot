@@ -1,6 +1,6 @@
 {
   "name": "@stevederico/dotbot",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "AI agent CLI and library for Node.js — streaming, multi-provider, tool execution, autonomous tasks",
   "type": "module",
   "main": "index.js",
@@ -31,12 +31,10 @@
   ],
   "author": "Steve Derico",
   "license": "MIT",
-  "peerDependencies": {
-    "mongodb": "^6.0.0"
+  "engines": {
+    "node": ">=22.0.0"
   },
-  "dependencies": {
-    "playwright": "^1.58.2"
-  },
+  "dependencies": {},
   "devDependencies": {},
   "repository": {
     "type": "git",
