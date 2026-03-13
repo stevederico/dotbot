@@ -50,7 +50,7 @@ async function loadModules() {
   agentLoop = mod.agentLoop;
 }
 
-const VERSION = '0.18';
+const VERSION = '0.19';
 const DEFAULT_PORT = 3000;
 const DEFAULT_DB = './dotbot.db';
 
