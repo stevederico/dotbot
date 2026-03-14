@@ -1,3 +1,13 @@
+0.25
+
+  Add delete subcommands for memory, jobs, tasks, sessions
+  Add --json flag for machine-readable output
+  Add doctor command for environment check
+  Add ~/.dotbotrc config file support
+  Add --openai flag for OpenAI-compatible API
+  Add pipe support (stdin input)
+  Add --session flag to resume conversations
+
 0.24
 
   Add --system flag for custom prompts

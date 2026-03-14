@@ -13,7 +13,7 @@
       <img src="https://img.shields.io/github/stars/stevederico/dotbot?style=social" alt="GitHub stars">
     </a>
     <a href="https://github.com/stevederico/dotbot">
-      <img src="https://img.shields.io/badge/version-0.24-green" alt="version">
+      <img src="https://img.shields.io/badge/version-0.25-green" alt="version">
     </a>
     <img src="https://img.shields.io/badge/LOC-11k-orange" alt="Lines of Code">
   </p>
@@ -154,28 +154,38 @@ for await (const event of agent.chat({
 ## CLI Reference
 
 ```
-dotbot v0.24 — AI agent CLI
+dotbot v0.25 — AI agent CLI
 
 Usage:
   dotbot "message"            One-shot query
   dotbot                      Interactive chat
   dotbot serve [--port N]     Start HTTP server (default: 3000)
+  dotbot serve --openai       Start OpenAI-compatible API server
+  echo "msg" | dotbot         Pipe input from stdin
 
 Commands:
+  doctor                      Check environment and configuration
   tools                       List all available tools
   stats                       Show database statistics
   memory [list|search <q>]    Manage saved memories
+  memory delete <key>         Delete a memory by key
   jobs                        List scheduled jobs
+  jobs delete <id>            Delete a scheduled job
   tasks                       List active tasks
+  tasks delete <id>           Delete a task
   sessions                    List chat sessions
+  sessions delete <id>        Delete a session
   events [--summary]          View audit log
 
 Options:
   --provider, -p   AI provider: xai, anthropic, openai, ollama (default: xai)
   --model, -m      Model name (default: grok-4-1-fast-reasoning)
   --system, -s     Custom system prompt (prepended to default)
+  --session        Resume a specific session by ID
   --db             SQLite database path (default: ./dotbot.db)
   --port           Server port for 'serve' command
+  --openai         Enable OpenAI-compatible API endpoints
+  --json           Output as JSON (for inspection commands)
   --verbose        Show initialization logs
   --help, -h       Show help
   --version, -v    Show version
@@ -185,6 +195,9 @@ Environment Variables:
   ANTHROPIC_API_KEY    API key for Anthropic
   OPENAI_API_KEY       API key for OpenAI
   OLLAMA_BASE_URL      Base URL for Ollama (default: http://localhost:11434)
+
+Config File:
+  ~/.dotbotrc          JSON config for defaults (provider, model, db)
 ```
 
 <br />
