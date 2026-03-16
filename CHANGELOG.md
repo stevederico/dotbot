@@ -1,3 +1,10 @@
+0.26
+
+  Update REPL prompt style
+  Add visible thinking output
+  Add /help, /show, /bye commands
+  Add multi-line input mode
+
 0.25
 
   Add delete subcommands for memory, jobs, tasks, sessions
