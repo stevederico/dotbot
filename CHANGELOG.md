@@ -1,3 +1,10 @@
+0.27
+
+  Add interactive API key prompt
+  Add key saving to dotbotrc
+  Add provider signup URLs
+  Update thinking spinner display
+
 0.26
 
   Update REPL prompt style

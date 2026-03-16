@@ -22,7 +22,7 @@ process.emit = function (event, error) {
  */
 
 import { parseArgs } from 'node:util';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
@@ -162,7 +162,18 @@ function loadConfig() {
   }
   try {
     const content = readFileSync(CONFIG_PATH, 'utf8');
-    return JSON.parse(content);
+    const config = JSON.parse(content);
+
+    // Inject saved API keys into process.env (don't override existing)
+    if (config.env && typeof config.env === 'object') {
+      for (const [key, value] of Object.entries(config.env)) {
+        if (!process.env[key]) {
+          process.env[key] = value;
+        }
+      }
+    }
+
+    return config;
   } catch (err) {
     console.error(`Warning: Invalid config file at ${CONFIG_PATH}: ${err.message}`);
     return {};
@@ -214,7 +225,42 @@ function parseCliArgs() {
 }
 
 /**
- * Get provider config with API key from environment.
+ * Prompt user for input via readline.
+ *
+ * @param {string} question - Prompt text
+ * @returns {Promise<string>} User input
+ */
+function askUser(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
+
+/**
+ * Save or update a key in ~/.dotbotrc config file.
+ *
+ * @param {string} key - Config key
+ * @param {*} value - Config value
+ */
+function saveToConfig(key, value) {
+  let config = {};
+  if (existsSync(CONFIG_PATH)) {
+    try {
+      config = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
+    } catch {
+      config = {};
+    }
+  }
+  config[key] = value;
+  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n', 'utf8');
+}
+
+/**
+ * Get provider config with API key from environment or interactive prompt.
  *
  * @param {string} providerId - Provider ID
  * @returns {Object} Provider config with headers
@@ -228,23 +274,58 @@ async function getProviderConfig(providerId) {
     process.exit(1);
   }
 
-  const envKey = base.envKey;
-  const apiKey = process.env[envKey];
-
-  if (!apiKey && providerId !== 'ollama') {
-    console.error(`Missing ${envKey} environment variable`);
-    process.exit(1);
-  }
-
   if (providerId === 'ollama') {
     const baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
     return { ...base, apiUrl: `${baseUrl}/api/chat` };
+  }
+
+  const envKey = base.envKey;
+  let apiKey = process.env[envKey];
+
+  if (!apiKey) {
+    if (!process.stdin.isTTY) {
+      console.error(`Missing ${envKey} environment variable.`);
+      console.error(`Get one at: ${getProviderSignupUrl(providerId)}`);
+      process.exit(1);
+    }
+
+    console.log(`\n${base.name} API key not found (${envKey}). Get one at: ${getProviderSignupUrl(providerId)}\n`);
+
+    apiKey = await askUser(`Paste your ${base.name} API key: `);
+    if (!apiKey) {
+      console.error('No API key provided.');
+      process.exit(1);
+    }
+
+    const save = await askUser('Save to ~/.dotbotrc for next time? (Y/n) ');
+    if (save.toLowerCase() !== 'n') {
+      saveToConfig('env', { ...loadConfig().env, [envKey]: apiKey });
+      console.log(`Saved to ${CONFIG_PATH}\n`);
+    }
+
+    process.env[envKey] = apiKey;
   }
 
   return {
     ...base,
     headers: () => base.headers(apiKey),
   };
+}
+
+/**
+ * Get signup/API key URL for a provider.
+ *
+ * @param {string} providerId - Provider ID
+ * @returns {string} URL to get an API key
+ */
+function getProviderSignupUrl(providerId) {
+  const urls = {
+    xai: 'https://console.x.ai',
+    openai: 'https://platform.openai.com/api-keys',
+    anthropic: 'https://console.anthropic.com/settings/keys',
+    cerebras: 'https://cloud.cerebras.ai',
+  };
+  return urls[providerId] || 'the provider\'s website';
 }
 
 /**
@@ -331,8 +412,11 @@ async function runChat(message, options) {
     ...storesObj,
   };
 
-  let isThinking = false;
+  let hasThinkingText = false;
   let thinkingDone = false;
+
+  process.stdout.write('Thinking');
+  startSpinner();
 
   for await (const event of agentLoop({
     model: options.model,
@@ -343,26 +427,33 @@ async function runChat(message, options) {
   })) {
     switch (event.type) {
       case 'thinking':
-        if (!isThinking) {
-          process.stdout.write('Thinking...\n');
-          isThinking = true;
-        }
         if (event.text) {
+          if (!hasThinkingText) {
+            stopSpinner('');
+            process.stdout.write('\n');
+            hasThinkingText = true;
+          }
           process.stdout.write(event.text);
         }
         break;
       case 'text_delta':
-        if (isThinking && !thinkingDone) {
-          stopSpinner('');
-          process.stdout.write('\n...done thinking.\n\n');
+        if (!thinkingDone) {
+          if (hasThinkingText) {
+            process.stdout.write('\n...done thinking.\n\n');
+          } else {
+            stopSpinner('');
+          }
           thinkingDone = true;
         }
         process.stdout.write(event.text);
         break;
       case 'tool_start':
-        if (isThinking && !thinkingDone) {
-          stopSpinner('');
-          process.stdout.write('\n...done thinking.\n\n');
+        if (!thinkingDone) {
+          if (hasThinkingText) {
+            process.stdout.write('\n...done thinking.\n\n');
+          } else {
+            stopSpinner('');
+          }
           thinkingDone = true;
         }
         process.stdout.write(`[${event.name}] `);
@@ -504,9 +595,12 @@ async function runRepl(options) {
   const handleMessage = async (text) => {
     messages.push({ role: 'user', content: text });
 
-    let isThinking = false;
+    let hasThinkingText = false;
     let thinkingDone = false;
     let assistantContent = '';
+
+    process.stdout.write('Thinking');
+    startSpinner();
 
     try {
       for await (const event of agentLoop({
@@ -518,27 +612,34 @@ async function runRepl(options) {
       })) {
         switch (event.type) {
           case 'thinking':
-            if (!isThinking) {
-              process.stdout.write('Thinking...\n');
-              isThinking = true;
-            }
             if (event.text) {
+              if (!hasThinkingText) {
+                stopSpinner('');
+                process.stdout.write('\n');
+                hasThinkingText = true;
+              }
               process.stdout.write(event.text);
             }
             break;
           case 'text_delta':
-            if (isThinking && !thinkingDone) {
-              stopSpinner('');
-              process.stdout.write('\n...done thinking.\n\n');
+            if (!thinkingDone) {
+              if (hasThinkingText) {
+                process.stdout.write('\n...done thinking.\n\n');
+              } else {
+                stopSpinner('');
+              }
               thinkingDone = true;
             }
             process.stdout.write(event.text);
             assistantContent += event.text;
             break;
           case 'tool_start':
-            if (isThinking && !thinkingDone) {
-              stopSpinner('');
-              process.stdout.write('\n...done thinking.\n\n');
+            if (!thinkingDone) {
+              if (hasThinkingText) {
+                process.stdout.write('\n...done thinking.\n\n');
+              } else {
+                stopSpinner('');
+              }
               thinkingDone = true;
             }
             process.stdout.write(`[${event.name}] `);
