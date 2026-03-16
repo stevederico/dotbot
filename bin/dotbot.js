@@ -331,8 +331,8 @@ async function runChat(message, options) {
     ...storesObj,
   };
 
-  process.stdout.write('\n[thinking] ');
-  startSpinner();
+  let isThinking = false;
+  let thinkingDone = false;
 
   for await (const event of agentLoop({
     model: options.model,
@@ -343,14 +343,28 @@ async function runChat(message, options) {
   })) {
     switch (event.type) {
       case 'thinking':
-        // Already showing spinner, ignore thinking events
+        if (!isThinking) {
+          process.stdout.write('Thinking...\n');
+          isThinking = true;
+        }
+        if (event.text) {
+          process.stdout.write(event.text);
+        }
         break;
       case 'text_delta':
-        stopSpinner('');  // Stop thinking spinner silently
+        if (isThinking && !thinkingDone) {
+          stopSpinner('');
+          process.stdout.write('\n...done thinking.\n\n');
+          thinkingDone = true;
+        }
         process.stdout.write(event.text);
         break;
       case 'tool_start':
-        stopSpinner('');  // Stop thinking spinner silently
+        if (isThinking && !thinkingDone) {
+          stopSpinner('');
+          process.stdout.write('\n...done thinking.\n\n');
+          thinkingDone = true;
+        }
         process.stdout.write(`[${event.name}] `);
         startSpinner();
         break;
@@ -410,18 +424,55 @@ async function runRepl(options) {
   if (options.session) {
     console.log(`Resuming session: ${session.id}`);
   }
-  console.log('Type /quit to exit, /clear to reset conversation\n');
+  console.log('Type /? for help\n');
 
-  const prompt = () => {
-    rl.question('> ', async (input) => {
+  const showHelp = () => {
+    console.log('Available Commands:');
+    console.log('  /show            Show model information');
+    console.log('  /clear           Clear session context');
+    console.log('  /bye             Exit');
+    console.log('  /?, /help        Help for a command');
+    console.log('');
+    console.log('Use """ to begin a multi-line message.\n');
+  };
+
+  const showModel = () => {
+    console.log(`  Model:    ${options.model}`);
+    console.log(`  Provider: ${options.provider}`);
+    console.log(`  Session:  ${session.id}\n`);
+  };
+
+  const promptUser = () => {
+    rl.question('>>> ', async (input) => {
       const trimmed = input.trim();
 
       if (!trimmed) {
-        prompt();
+        promptUser();
         return;
       }
 
-      if (trimmed === '/quit' || trimmed === '/exit') {
+      // Multi-line input mode
+      if (trimmed === '"""') {
+        let multiLine = '';
+        const collectLines = () => {
+          rl.question('... ', (line) => {
+            if (line.trim() === '"""') {
+              if (multiLine.trim()) {
+                handleMessage(multiLine.trim());
+              } else {
+                promptUser();
+              }
+            } else {
+              multiLine += (multiLine ? '\n' : '') + line;
+              collectLines();
+            }
+          });
+        };
+        collectLines();
+        return;
+      }
+
+      if (trimmed === '/bye' || trimmed === '/quit' || trimmed === '/exit') {
         console.log('Goodbye!');
         rl.close();
         process.exit(0);
@@ -430,64 +481,94 @@ async function runRepl(options) {
       if (trimmed === '/clear') {
         messages.length = 0;
         console.log('Conversation cleared.\n');
-        prompt();
+        promptUser();
         return;
       }
 
-      messages.push({ role: 'user', content: trimmed });
-
-      process.stdout.write('\n[thinking] ');
-      startSpinner();
-      let assistantContent = '';
-
-      try {
-        for await (const event of agentLoop({
-          model: options.model,
-          messages: [...messages],
-          tools: coreTools,
-          provider,
-          context,
-        })) {
-          switch (event.type) {
-            case 'thinking':
-              // Already showing spinner, ignore thinking events
-              break;
-            case 'text_delta':
-              stopSpinner('');  // Stop thinking spinner silently
-              process.stdout.write(event.text);
-              assistantContent += event.text;
-              break;
-            case 'tool_start':
-              stopSpinner('');  // Stop thinking spinner silently
-              process.stdout.write(`[${event.name}] `);
-              startSpinner();
-              break;
-            case 'tool_result':
-              stopSpinner('done');
-              break;
-            case 'tool_error':
-              stopSpinner('error');
-              break;
-            case 'error':
-              stopSpinner();
-              console.error(`\nError: ${event.error}`);
-              break;
-          }
-        }
-
-        if (assistantContent) {
-          messages.push({ role: 'assistant', content: assistantContent });
-        }
-      } catch (err) {
-        console.error(`\nError: ${err.message}`);
+      if (trimmed === '/?' || trimmed === '/help') {
+        showHelp();
+        promptUser();
+        return;
       }
 
-      process.stdout.write('\n\n');
-      prompt();
+      if (trimmed === '/show') {
+        showModel();
+        promptUser();
+        return;
+      }
+
+      await handleMessage(trimmed);
     });
   };
 
-  prompt();
+  const handleMessage = async (text) => {
+    messages.push({ role: 'user', content: text });
+
+    let isThinking = false;
+    let thinkingDone = false;
+    let assistantContent = '';
+
+    try {
+      for await (const event of agentLoop({
+        model: options.model,
+        messages: [...messages],
+        tools: coreTools,
+        provider,
+        context,
+      })) {
+        switch (event.type) {
+          case 'thinking':
+            if (!isThinking) {
+              process.stdout.write('Thinking...\n');
+              isThinking = true;
+            }
+            if (event.text) {
+              process.stdout.write(event.text);
+            }
+            break;
+          case 'text_delta':
+            if (isThinking && !thinkingDone) {
+              stopSpinner('');
+              process.stdout.write('\n...done thinking.\n\n');
+              thinkingDone = true;
+            }
+            process.stdout.write(event.text);
+            assistantContent += event.text;
+            break;
+          case 'tool_start':
+            if (isThinking && !thinkingDone) {
+              stopSpinner('');
+              process.stdout.write('\n...done thinking.\n\n');
+              thinkingDone = true;
+            }
+            process.stdout.write(`[${event.name}] `);
+            startSpinner();
+            break;
+          case 'tool_result':
+            stopSpinner('done');
+            break;
+          case 'tool_error':
+            stopSpinner('error');
+            break;
+          case 'error':
+            stopSpinner();
+            console.error(`\nError: ${event.error}`);
+            break;
+        }
+      }
+
+      if (assistantContent) {
+        messages.push({ role: 'assistant', content: assistantContent });
+      }
+    } catch (err) {
+      console.error(`\nError: ${err.message}`);
+    }
+
+    process.stdout.write('\n\n');
+    promptUser();
+  };
+
+  promptUser();
 }
 
 /**
