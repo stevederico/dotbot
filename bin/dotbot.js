@@ -100,6 +100,7 @@ Usage:
   echo "msg" | dotbot         Pipe input from stdin
 
 Commands:
+  models                      List available models from provider
   doctor                      Check environment and configuration
   tools                       List all available tools
   stats                       Show database statistics
@@ -121,6 +122,8 @@ Options:
   --db             SQLite database path (default: ${DEFAULT_DB})
   --port           Server port for 'serve' command (default: ${DEFAULT_PORT})
   --openai         Enable OpenAI-compatible API endpoints (/v1/chat/completions, /v1/models)
+  --sandbox        Restrict tools to safe subset (no files, code, browser, messages)
+  --allow          Allow domain/preset in sandbox (github, slack, discord, npm, etc.)
   --json           Output as JSON (for inspection commands)
   --verbose        Show initialization logs
   --help, -h       Show this help
@@ -138,16 +141,20 @@ Config File:
 Examples:
   dotbot "What's the weather in SF?"
   dotbot
+  dotbot -p anthropic -m claude-sonnet-4-5 "Hello"
+  dotbot -p ollama -m llama3 "Summarize this"
+  dotbot -p openai -m gpt-4o
+  dotbot models
   dotbot serve --port 8080
   dotbot doctor
   dotbot tools
   dotbot memory search "preferences"
-  dotbot memory delete user_pref
   dotbot stats --json
+  dotbot --sandbox "What is 2+2?"
+  dotbot --sandbox --allow github "Check my repo"
   dotbot --system "You are a pirate" "Hello"
   dotbot --session abc-123 "follow up question"
   echo "What is 2+2?" | dotbot
-  cat question.txt | dotbot
 `);
 }
 
@@ -204,10 +211,17 @@ function parseCliArgs() {
         port: { type: 'string' },
         openai: { type: 'boolean', default: false },
         session: { type: 'string', default: '' },
+        sandbox: { type: 'boolean', default: false },
+        allow: { type: 'string', multiple: true },
       },
     });
 
     // Merge: CLI args > config file > hardcoded defaults
+    // Build sandbox domain allowlist from --allow flags, presets, and config
+    const allowFlags = values.allow || [];
+    const configAllow = config.sandboxAllow || [];
+    const allAllow = [...allowFlags, ...configAllow];
+
     return {
       ...values,
       provider: values.provider ?? config.provider ?? 'xai',
@@ -216,6 +230,8 @@ function parseCliArgs() {
       db: values.db ?? config.db ?? DEFAULT_DB,
       port: values.port ?? config.port ?? String(DEFAULT_PORT),
       session: values.session ?? '',
+      sandbox: values.sandbox || config.sandbox || false,
+      sandboxAllow: allAllow,
       positionals,
     };
   } catch (err) {
@@ -297,6 +313,18 @@ async function getProviderConfig(providerId) {
       process.exit(1);
     }
 
+    // Validate key by fetching models
+    process.stdout.write('Validating');
+    startSpinner();
+    const { ok } = await fetchProviderModels(providerId, apiKey);
+    if (ok) {
+      stopSpinner('valid');
+    } else {
+      stopSpinner('failed');
+      console.error(`Could not authenticate with ${base.name}. Check your API key and try again.`);
+      process.exit(1);
+    }
+
     const save = await askUser('Save to ~/.dotbotrc for next time? (Y/n) ');
     if (save.toLowerCase() !== 'n') {
       saveToConfig('env', { ...loadConfig().env, [envKey]: apiKey });
@@ -326,6 +354,201 @@ function getProviderSignupUrl(providerId) {
     cerebras: 'https://cloud.cerebras.ai',
   };
   return urls[providerId] || 'the provider\'s website';
+}
+
+/**
+ * Fetch available models from a provider's API.
+ *
+ * @param {string} providerId - Provider ID
+ * @param {string} apiKey - API key for authentication
+ * @returns {Promise<{ok: boolean, models: Array<{id: string, name: string}>}>} Validation result with model list
+ */
+async function fetchProviderModels(providerId, apiKey) {
+  await loadModules();
+  const base = AI_PROVIDERS[providerId];
+  if (!base) return { ok: false, models: [] };
+
+  let url;
+  let headers;
+
+  if (providerId === 'ollama') {
+    const baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+    url = `${baseUrl}/api/tags`;
+    headers = { 'Content-Type': 'application/json' };
+  } else {
+    url = `${base.apiUrl}/models`;
+    headers = base.headers(apiKey);
+  }
+
+  try {
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return { ok: false, models: [] };
+
+    const data = await res.json();
+
+    let models = [];
+    if (providerId === 'ollama') {
+      models = (data.models || []).map((m) => ({ id: m.name, name: m.name }));
+    } else if (providerId === 'anthropic') {
+      models = (data.data || []).map((m) => ({ id: m.id, name: m.display_name || m.id }));
+    } else {
+      models = (data.data || []).map((m) => ({ id: m.id, name: m.id }));
+    }
+
+    return { ok: true, models };
+  } catch {
+    return { ok: false, models: [] };
+  }
+}
+
+/**
+ * Tools always allowed in sandbox mode (safe, internal-only).
+ */
+const SANDBOX_ALLOWED_TOOLS = new Set([
+  'memory_save', 'memory_search', 'memory_delete', 'memory_list', 'memory_read', 'memory_update',
+  'web_search', 'grokipedia_search',
+  'file_read', 'file_list',
+  'run_code',
+  'weather_get',
+  'event_query', 'events_summary',
+  'task_create', 'task_list', 'task_plan', 'task_work', 'task_step_done', 'task_complete',
+  'task_delete', 'task_search', 'task_stats',
+  'trigger_create', 'trigger_list', 'trigger_toggle', 'trigger_delete',
+  'schedule_job', 'list_jobs', 'toggle_job', 'cancel_job',
+]);
+
+/** Tools that are allowed in sandbox but domain-gated via allowlist. */
+const SANDBOX_GATED_TOOLS = new Set(['web_fetch', 'browser_navigate']);
+
+/** Tools unlocked in sandbox when their preset is in the --allow list. */
+const SANDBOX_PRESET_TOOLS = {
+  messages: ['message_list', 'message_send', 'message_delete', 'message_read'],
+  images: ['image_generate', 'image_list', 'image_search'],
+  notifications: ['notify_user'],
+};
+
+/**
+ * Domain presets matching NemoClaw's policy preset pattern.
+ * Each preset maps to a list of allowed domains.
+ */
+const DOMAIN_PRESETS = {
+  github: ['github.com', 'api.github.com', 'raw.githubusercontent.com'],
+  slack: ['slack.com', 'api.slack.com'],
+  discord: ['discord.com', 'api.discord.com'],
+  npm: ['registry.npmjs.org', 'www.npmjs.com'],
+  pypi: ['pypi.org', 'files.pythonhosted.org'],
+  jira: ['atlassian.net', 'jira.atlassian.com'],
+  huggingface: ['huggingface.co', 'api-inference.huggingface.co'],
+  docker: ['hub.docker.com', 'registry-1.docker.io'],
+  telegram: ['api.telegram.org'],
+};
+
+/**
+ * Resolve --allow values into a Set of allowed domains.
+ * Accepts preset names (e.g., "github") or raw domains (e.g., "api.example.com").
+ *
+ * @param {Array<string>} allowList - Preset names or domain names
+ * @returns {Set<string>} Resolved domain set
+ */
+function resolveSandboxDomains(allowList = []) {
+  const domains = new Set();
+  for (const entry of allowList) {
+    const lower = entry.toLowerCase();
+    if (DOMAIN_PRESETS[lower]) {
+      for (const d of DOMAIN_PRESETS[lower]) domains.add(d);
+    } else {
+      domains.add(lower);
+    }
+  }
+  return domains;
+}
+
+/**
+ * Check if a URL's hostname matches the sandbox domain allowlist.
+ *
+ * @param {string} urlStr - URL to check
+ * @param {Set<string>} allowedDomains - Set of allowed domain names
+ * @returns {boolean} Whether the domain is allowed
+ */
+function isDomainAllowed(urlStr, allowedDomains) {
+  try {
+    const { hostname } = new URL(urlStr);
+    if (allowedDomains.has(hostname)) return true;
+    // Support wildcard subdomains (e.g., "atlassian.net" matches "myteam.atlassian.net")
+    for (const domain of allowedDomains) {
+      if (hostname.endsWith(`.${domain}`)) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Wrap a tool's execute function with domain enforcement.
+ *
+ * @param {Object} tool - Tool definition
+ * @param {Set<string>} allowedDomains - Allowed domains
+ * @returns {Object} Tool with domain-gated execute
+ */
+function wrapWithDomainGate(tool, allowedDomains) {
+  const original = tool.execute;
+  return {
+    ...tool,
+    description: `${tool.description} [SANDBOX: restricted to allowed domains]`,
+    execute: async (input, signal, context) => {
+      const url = input.url;
+      if (!url || !isDomainAllowed(url, allowedDomains)) {
+        const allowed = [...allowedDomains].join(', ') || 'none';
+        return `Blocked by sandbox policy. Domain not in allowlist.\nAllowed domains: ${allowed}`;
+      }
+      return original(input, signal, context);
+    },
+  };
+}
+
+/**
+ * Get tools filtered by sandbox mode with domain-gated network access.
+ *
+ * Mirrors NemoClaw's deny-by-default policy:
+ * - No filesystem access (file_*)
+ * - No code execution (run_code)
+ * - No outbound messaging (message_*)
+ * - No image generation, notifications, or app scaffolding
+ * - Network tools (web_fetch, browser_navigate) restricted to domain allowlist
+ * - Curated search APIs (web_search, grokipedia_search) always allowed
+ *
+ * @param {boolean} sandbox - Whether sandbox mode is active
+ * @param {Array<string>} allowList - Domain presets or raw domains to allow
+ * @returns {Array} Filtered and gated tools
+ */
+function getActiveTools(sandbox = false, allowList = []) {
+  if (!sandbox) return coreTools;
+
+  const allowedDomains = resolveSandboxDomains(allowList);
+  const allowLower = new Set(allowList.map((a) => a.toLowerCase()));
+
+  // Build set of preset-unlocked tool names
+  const presetUnlocked = new Set();
+  for (const [preset, toolNames] of Object.entries(SANDBOX_PRESET_TOOLS)) {
+    if (allowLower.has(preset)) {
+      for (const name of toolNames) presetUnlocked.add(name);
+    }
+  }
+
+  const tools = [];
+
+  for (const tool of coreTools) {
+    if (SANDBOX_ALLOWED_TOOLS.has(tool.name)) {
+      tools.push(tool);
+    } else if (SANDBOX_GATED_TOOLS.has(tool.name) && allowedDomains.size > 0) {
+      tools.push(wrapWithDomainGate(tool, allowedDomains));
+    } else if (presetUnlocked.has(tool.name)) {
+      tools.push(tool);
+    }
+  }
+
+  return tools;
 }
 
 /**
@@ -421,7 +644,7 @@ async function runChat(message, options) {
   for await (const event of agentLoop({
     model: options.model,
     messages,
-    tools: coreTools,
+    tools: getActiveTools(options.sandbox, options.sandboxAllow),
     provider,
     context,
   })) {
@@ -511,7 +734,7 @@ async function runRepl(options) {
     output: process.stdout,
   });
 
-  console.log(`\ndotbot v${VERSION} — ${options.provider}/${options.model}`);
+  console.log(`\ndotbot v${VERSION} — ${options.provider}/${options.model}${options.sandbox ? ' (sandbox)' : ''}`);
   if (options.session) {
     console.log(`Resuming session: ${session.id}`);
   }
@@ -519,6 +742,8 @@ async function runRepl(options) {
 
   const showHelp = () => {
     console.log('Available Commands:');
+    console.log('  /models          List available models from provider');
+    console.log('  /load <model>    Switch to a different model');
     console.log('  /show            Show model information');
     console.log('  /clear           Clear session context');
     console.log('  /bye             Exit');
@@ -588,6 +813,50 @@ async function runRepl(options) {
         return;
       }
 
+      if (trimmed === '/models') {
+        const apiKey = process.env[AI_PROVIDERS[options.provider]?.envKey];
+        process.stdout.write('Fetching models');
+        startSpinner();
+        const { ok, models } = await fetchProviderModels(options.provider, apiKey);
+        if (ok && models.length) {
+          stopSpinner('');
+          console.log('');
+          for (const m of models) {
+            const active = m.id === options.model ? ' (active)' : '';
+            console.log(`  ${m.id}${active}`);
+          }
+          console.log('');
+        } else {
+          stopSpinner('');
+          // Fall back to static list
+          const base = AI_PROVIDERS[options.provider];
+          if (base.models?.length) {
+            console.log('');
+            for (const m of base.models) {
+              const active = m.id === options.model ? ' (active)' : '';
+              console.log(`  ${m.id}${active}`);
+            }
+            console.log('');
+          } else {
+            console.log('\nNo models found.\n');
+          }
+        }
+        promptUser();
+        return;
+      }
+
+      if (trimmed.startsWith('/load ')) {
+        const newModel = trimmed.slice(6).trim();
+        if (!newModel) {
+          console.log('Usage: /load <model-name>\n');
+        } else {
+          options.model = newModel;
+          console.log(`Switched to ${newModel}\n`);
+        }
+        promptUser();
+        return;
+      }
+
       await handleMessage(trimmed);
     });
   };
@@ -606,7 +875,7 @@ async function runRepl(options) {
       for await (const event of agentLoop({
         model: options.model,
         messages: [...messages],
-        tools: coreTools,
+        tools: getActiveTools(options.sandbox, options.sandboxAllow),
         provider,
         context,
       })) {
@@ -771,7 +1040,7 @@ async function runServer(options) {
             for await (const event of agentLoop({
               model,
               messages: reqMessages,
-              tools: coreTools,
+              tools: getActiveTools(options.sandbox, options.sandboxAllow),
               provider,
               context,
             })) {
@@ -804,7 +1073,7 @@ async function runServer(options) {
             for await (const event of agentLoop({
               model,
               messages: reqMessages,
-              tools: coreTools,
+              tools: getActiveTools(options.sandbox, options.sandboxAllow),
               provider,
               context,
             })) {
@@ -878,7 +1147,7 @@ async function runServer(options) {
         for await (const event of agentLoop({
           model,
           messages,
-          tools: coreTools,
+          tools: getActiveTools(options.sandbox, options.sandboxAllow),
           provider,
           context,
         })) {
@@ -1266,6 +1535,62 @@ async function runDoctor(options) {
 }
 
 /**
+ * List available models from the provider's API.
+ *
+ * @param {Object} options - CLI options
+ */
+async function runModels(options) {
+  await loadModules();
+  const base = AI_PROVIDERS[options.provider];
+  if (!base) {
+    console.error(`Unknown provider: ${options.provider}`);
+    process.exit(1);
+  }
+
+  const apiKey = process.env[base.envKey];
+  if (!apiKey && options.provider !== 'ollama') {
+    console.error(`Missing ${base.envKey} — set it or run dotbot to configure interactively.`);
+    process.exit(1);
+  }
+
+  process.stdout.write('Fetching models');
+  startSpinner();
+
+  const { ok, models } = await fetchProviderModels(options.provider, apiKey);
+
+  if (!ok) {
+    stopSpinner('failed');
+    console.error(`Could not fetch models from ${base.name}. Check your API key.`);
+
+    // Fall back to static list
+    if (base.models?.length) {
+      console.log(`\nLocal model list (${base.name}):\n`);
+      for (const m of base.models) {
+        const active = m.id === options.model ? ' (active)' : '';
+        console.log(`  ${m.id}${active}`);
+      }
+      console.log();
+    }
+    return;
+  }
+
+  stopSpinner('');
+
+  if (options.json) {
+    console.log(JSON.stringify(models));
+    return;
+  }
+
+  console.log(`\n${base.name} models (${models.length})\n`);
+  for (const m of models) {
+    const active = m.id === options.model ? ' (active)' : '';
+    const label = m.name !== m.id ? ` — ${m.name}` : '';
+    console.log(`  ${m.id}${label}${active}`);
+  }
+  console.log();
+}
+
+/**
  * Main entry point.
  */
 async function main() {
@@ -1297,6 +1622,9 @@ async function main() {
   }
 
   switch (command) {
+    case 'models':
+      await runModels(args);
+      break;
     case 'doctor':
       await runDoctor(args);
       break;
