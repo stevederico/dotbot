@@ -184,35 +184,22 @@ export class CDPClient {
     return result.result?.value;
   }
 
-  /**
-   * Get the page title.
-   * @returns {Promise<string>}
-   */
+  /** Get the page title. */
   async getTitle() {
     return this.evaluate('document.title');
   }
 
-  /**
-   * Get the current URL.
-   * @returns {Promise<string>}
-   */
+  /** Get the current URL. */
   async getUrl() {
     return this.evaluate('window.location.href');
   }
 
-  /**
-   * Get text content of the page body.
-   * @returns {Promise<string>}
-   */
+  /** Get text content of the page body. */
   async getBodyText() {
     return this.evaluate('document.body?.innerText || ""');
   }
 
-  /**
-   * Get text content of an element by CSS selector.
-   * @param {string} selector - CSS selector
-   * @returns {Promise<string>}
-   */
+  /** Get text content of an element by CSS selector. */
   async getText(selector) {
     const escaped = selector.replace(/"/g, '\\"');
     return this.evaluate(`document.querySelector("${escaped}")?.innerText || ""`);
@@ -306,26 +293,6 @@ export class CDPClient {
       button: 'left',
       clickCount: 1
     });
-  }
-
-  /**
-   * Click an element by CSS selector.
-   * @param {string} selector - CSS selector
-   */
-  async clickSelector(selector) {
-    const el = await this.querySelector(selector);
-    if (!el) throw new Error(`Element not found: ${selector}`);
-    await this.click(el.x, el.y);
-  }
-
-  /**
-   * Click an element by visible text.
-   * @param {string} text - Text content to find
-   */
-  async clickText(text) {
-    const el = await this.getByText(text);
-    if (!el) throw new Error(`Element with text "${text}" not found`);
-    await this.click(el.x, el.y);
   }
 
   /**
@@ -453,9 +420,7 @@ export class CDPClient {
     });
   }
 
-  /**
-   * Close the connection.
-   */
+  /** Close the CDP connection. */
   close() {
     if (this.ws) {
       this.ws.close();
@@ -488,24 +453,6 @@ export class CDPClient {
       }
     }
     throw lastError;
-  }
-
-  /**
-   * Wait for an element to appear in the DOM.
-   * @param {string} selector - CSS selector
-   * @param {Object} options - Wait options
-   * @param {number} options.timeout - Timeout in ms (default: 5000)
-   * @param {number} options.interval - Poll interval in ms (default: 100)
-   * @returns {Promise<{x: number, y: number, nodeId: number}>} Element info
-   */
-  async waitForSelector(selector, { timeout = 5000, interval = 100 } = {}) {
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-      const el = await this.querySelector(selector);
-      if (el) return el;
-      await new Promise(r => setTimeout(r, interval));
-    }
-    throw new Error(`Timeout waiting for selector: ${selector}`);
   }
 
   /**

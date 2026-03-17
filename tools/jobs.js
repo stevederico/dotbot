@@ -155,5 +155,3 @@ export const jobTools = [
   },
 ];
 
-// Backwards compatibility alias
-export const cronTools = jobTools;

@@ -220,16 +220,7 @@ export class SQLiteCronStore extends CronStore {
       "SELECT * FROM cron_tasks WHERE session_id = ? AND name != 'heartbeat' ORDER BY next_run_at ASC"
     ).all(sessionId || 'default');
 
-    return rows.map(r => ({
-      id: r.id,
-      name: r.name,
-      prompt: r.prompt,
-      nextRunAt: new Date(r.next_run_at),
-      recurring: !!r.recurring,
-      intervalMs: r.interval_ms,
-      enabled: !!r.enabled,
-      lastRunAt: r.last_run_at ? new Date(r.last_run_at) : null,
-    }));
+    return rows.map(r => this._rowToTask(r));
   }
 
   /**
@@ -257,18 +248,7 @@ export class SQLiteCronStore extends CronStore {
 
     const rows = this.db.prepare(query).all(...params);
 
-    return rows.map(r => ({
-      id: r.id,
-      name: r.name,
-      prompt: r.prompt,
-      sessionId: r.session_id,
-      nextRunAt: new Date(r.next_run_at),
-      recurring: !!r.recurring,
-      intervalMs: r.interval_ms,
-      enabled: !!r.enabled,
-      lastRunAt: r.last_run_at ? new Date(r.last_run_at) : null,
-      createdAt: new Date(r.created_at),
-    }));
+    return rows.map(r => this._rowToTask(r));
   }
 
   /**
@@ -375,53 +355,6 @@ export class SQLiteCronStore extends CronStore {
   }
 
   /**
-   * Ensure a Morning Brief job exists for the user (disabled by default).
-   * Creates a daily recurring job at 8:00 AM if not present.
-   *
-   * @param {string} userId - User ID
-   * @returns {Promise<Object|null>} Created task or null if already exists
-   */
-  async ensureMorningBrief(userId) {
-    if (!this.db || !userId) return null;
-
-    // Check if Morning Brief already exists for this user
-    const existing = this.db.prepare(
-      `SELECT id FROM cron_tasks WHERE user_id = ? AND name = 'Morning Brief' LIMIT 1`
-    ).get(userId);
-    if (existing) return null;
-
-    const DAY_MS = 24 * 60 * 60 * 1000;
-    const MORNING_BRIEF_PROMPT = `Good morning! Give me a brief summary to start my day:
-1. What's on my calendar today?
-2. Any important reminders or tasks due?
-3. A quick weather update for my location.
-Keep it concise and actionable.`;
-
-    // Calculate next 8:00 AM
-    const now = new Date();
-    const today8AM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
-    const nextRun = now.getTime() < today8AM.getTime()
-      ? today8AM.getTime()
-      : today8AM.getTime() + DAY_MS;
-
-    const id = crypto.randomUUID();
-    const nowMs = Date.now();
-
-    const result = this.db.prepare(`
-      INSERT OR IGNORE INTO cron_tasks (id, name, prompt, session_id, user_id, next_run_at, interval_ms, recurring, enabled, created_at, last_run_at)
-      VALUES (?, 'Morning Brief', ?, 'default', ?, ?, ?, 1, 0, ?, NULL)
-    `).run(id, MORNING_BRIEF_PROMPT, userId, nextRun, DAY_MS, nowMs);
-
-    if (result.changes > 0) {
-      const runTime = new Date(nextRun);
-      console.log(`[cron] created Morning Brief for user ${userId}, next run at ${runTime.toLocaleTimeString()} (disabled by default)`);
-      return { id };
-    }
-
-    return null;
-  }
-
-  /**
    * Get heartbeat status for a user
    *
    * @param {string} userId - User ID
@@ -455,35 +388,18 @@ Keep it concise and actionable.`;
   async resetHeartbeat(userId) {
     if (!this.db || !userId) return null;
 
-    const deleted = this.db.prepare(
+    this.db.prepare(
       "DELETE FROM cron_tasks WHERE user_id = ? AND name = 'heartbeat'"
     ).run(userId);
     console.log(`[cron] deleted existing heartbeat(s) for user ${userId}`);
 
-    const jitter = Math.floor(Math.random() * HEARTBEAT_INTERVAL_MS);
-    const now = Date.now();
-    const id = crypto.randomUUID();
+    const result = await this.ensureHeartbeat(userId);
 
-    this.db.prepare(`
-      INSERT INTO cron_tasks (id, name, prompt, session_id, user_id, next_run_at, interval_ms, recurring, enabled, created_at, last_run_at)
-      VALUES (?, 'heartbeat', ?, 'default', ?, ?, ?, 1, 1, ?, NULL)
-    `).run(id, HEARTBEAT_PROMPT, userId, now + jitter, HEARTBEAT_INTERVAL_MS, now);
+    if (!result) return null;
 
-    console.log(`[cron] created new heartbeat for user ${userId}, first run in ${Math.round(jitter / 60000)}m`);
-
-    return {
-      id,
-      name: 'heartbeat',
-      prompt: HEARTBEAT_PROMPT,
-      userId,
-      sessionId: 'default',
-      nextRunAt: new Date(now + jitter),
-      intervalMs: HEARTBEAT_INTERVAL_MS,
-      recurring: true,
-      enabled: true,
-      createdAt: new Date(now),
-      lastRunAt: null,
-    };
+    // Return the full task object for the newly created heartbeat
+    const row = this.db.prepare('SELECT * FROM cron_tasks WHERE id = ?').get(result.id);
+    return row ? this._rowToTask(row) : null;
   }
 
   /**

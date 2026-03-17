@@ -70,15 +70,6 @@ export const webTools = [
               result += "\n\nSources:\n" + [...citations].slice(0, 5).map((url, i) => `${i + 1}. ${url}`).join("\n");
             }
 
-            if (context?.databaseManager) {
-              try {
-                await context.databaseManager.logAgentActivity(
-                  context.dbConfig.dbType, context.dbConfig.db, context.dbConfig.connectionString,
-                  context.userID, { type: 'web_search', query: input.query, provider: 'grok', resultPreview: result.slice(0, 300) }
-                );
-              } catch (e) { /* best effort */ }
-            }
-
             return result || "No results found.";
           } else {
             const errText = await res.text();
@@ -119,15 +110,6 @@ export const webTools = [
       }
 
       const result = parts.join("\n\n");
-
-      if (context?.databaseManager) {
-        try {
-          await context.databaseManager.logAgentActivity(
-            context.dbConfig.dbType, context.dbConfig.db, context.dbConfig.connectionString,
-            context.userID, { type: 'web_search', query: input.query, provider: 'duckduckgo', resultPreview: parts.slice(0, 2).join('\n').slice(0, 300) }
-          );
-        } catch (e) { /* best effort */ }
-      }
 
       return result;
     },
@@ -174,15 +156,6 @@ export const webTools = [
         const maxChars = 8000;
         if (text.length > maxChars) {
           text = text.slice(0, maxChars) + `\n\n... [truncated, ${text.length} chars total]`;
-        }
-
-        if (context?.databaseManager) {
-          try {
-            await context.databaseManager.logAgentActivity(
-              context.dbConfig.dbType, context.dbConfig.db, context.dbConfig.connectionString,
-              context.userID, { type: 'grokipedia_search', query: input.query, url }
-            );
-          } catch (e) { /* best effort */ }
         }
 
         return text;
@@ -258,15 +231,6 @@ export const webTools = [
             .replace(/<[^>]+>/g, " ")
             .replace(/\s+/g, " ")
             .trim();
-        }
-
-        if (context?.databaseManager) {
-          try {
-            await context.databaseManager.logAgentActivity(
-              context.dbConfig.dbType, context.dbConfig.db, context.dbConfig.connectionString,
-              context.userID, { type: 'web_fetch', url: input.url, status: res.status }
-            );
-          } catch (e) { /* best effort */ }
         }
 
         const maxChars = 8000;

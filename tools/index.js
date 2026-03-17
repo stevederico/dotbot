@@ -13,9 +13,9 @@ import { imageTools } from './images.js';
 import { weatherTools } from './weather.js';
 import { notifyTools } from './notify.js';
 import { browserTools, createBrowserTools } from './browser.js';
-import { taskTools, goalTools } from './tasks.js';
+import { taskTools } from './tasks.js';
 import { triggerTools } from './triggers.js';
-import { jobTools, cronTools } from './jobs.js';
+import { jobTools } from './jobs.js';
 import { eventTools } from './events.js';
 import { appgenTools } from './appgen.js';
 
@@ -88,10 +88,8 @@ export {
   browserTools,
   createBrowserTools,
   taskTools,
-  goalTools,   // backwards compatibility alias
   triggerTools,
   jobTools,
-  cronTools,   // backwards compatibility alias
   eventTools,
   appgenTools,
 };

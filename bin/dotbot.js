@@ -604,6 +604,73 @@ async function initStores(dbPath, verbose = false, customSystemPrompt = '') {
 }
 
 /**
+ * Stream events from an agentLoop iterable to stdout.
+ * Handles thinking markers, text deltas, tool status, and errors.
+ *
+ * @param {AsyncIterable<Object>} events - Async iterable of agentLoop events
+ * @returns {Promise<string>} Accumulated assistant text content
+ */
+async function streamEvents(events) {
+  let hasThinkingText = false;
+  let thinkingDone = false;
+  let assistantContent = '';
+
+  process.stdout.write('Thinking');
+  startSpinner();
+
+  for await (const event of events) {
+    switch (event.type) {
+      case 'thinking':
+        if (event.text) {
+          if (!hasThinkingText) {
+            stopSpinner('');
+            process.stdout.write('\n');
+            hasThinkingText = true;
+          }
+          process.stdout.write(event.text);
+        }
+        break;
+      case 'text_delta':
+        if (!thinkingDone) {
+          if (hasThinkingText) {
+            process.stdout.write('\n...done thinking.\n\n');
+          } else {
+            stopSpinner('');
+          }
+          thinkingDone = true;
+        }
+        process.stdout.write(event.text);
+        assistantContent += event.text;
+        break;
+      case 'tool_start':
+        if (!thinkingDone) {
+          if (hasThinkingText) {
+            process.stdout.write('\n...done thinking.\n\n');
+          } else {
+            stopSpinner('');
+          }
+          thinkingDone = true;
+        }
+        process.stdout.write(`[${event.name}] `);
+        startSpinner();
+        break;
+      case 'tool_result':
+        stopSpinner('done');
+        break;
+      case 'tool_error':
+        stopSpinner('error');
+        break;
+      case 'error':
+        stopSpinner();
+        console.error(`\nError: ${event.error}`);
+        break;
+    }
+  }
+
+  return assistantContent;
+}
+
+/**
  * Run a single chat message and stream output.
  *
  * @param {string} message - User message
@@ -635,64 +702,13 @@ async function runChat(message, options) {
     ...storesObj,
   };
 
-  let hasThinkingText = false;
-  let thinkingDone = false;
-
-  process.stdout.write('Thinking');
-  startSpinner();
-
-  for await (const event of agentLoop({
+  await streamEvents(agentLoop({
     model: options.model,
     messages,
     tools: getActiveTools(options.sandbox, options.sandboxAllow),
     provider,
     context,
-  })) {
-    switch (event.type) {
-      case 'thinking':
-        if (event.text) {
-          if (!hasThinkingText) {
-            stopSpinner('');
-            process.stdout.write('\n');
-            hasThinkingText = true;
-          }
-          process.stdout.write(event.text);
-        }
-        break;
-      case 'text_delta':
-        if (!thinkingDone) {
-          if (hasThinkingText) {
-            process.stdout.write('\n...done thinking.\n\n');
-          } else {
-            stopSpinner('');
-          }
-          thinkingDone = true;
-        }
-        process.stdout.write(event.text);
-        break;
-      case 'tool_start':
-        if (!thinkingDone) {
-          if (hasThinkingText) {
-            process.stdout.write('\n...done thinking.\n\n');
-          } else {
-            stopSpinner('');
-          }
-          thinkingDone = true;
-        }
-        process.stdout.write(`[${event.name}] `);
-        startSpinner();
-        break;
-      case 'tool_result':
-        stopSpinner('done');
-        break;
-      case 'tool_error':
-        stopSpinner('error');
-        break;
-      case 'error':
-        console.error(`\nError: ${event.error}`);
-        break;
-    }
-  }
+  }));
 
   process.stdout.write('\n\n');
   process.exit(0);
@@ -864,68 +880,14 @@ async function runRepl(options) {
   const handleMessage = async (text) => {
     messages.push({ role: 'user', content: text });
 
-    let hasThinkingText = false;
-    let thinkingDone = false;
-    let assistantContent = '';
-
-    process.stdout.write('Thinking');
-    startSpinner();
-
     try {
-      for await (const event of agentLoop({
+      const assistantContent = await streamEvents(agentLoop({
         model: options.model,
         messages: [...messages],
         tools: getActiveTools(options.sandbox, options.sandboxAllow),
         provider,
         context,
-      })) {
-        switch (event.type) {
-          case 'thinking':
-            if (event.text) {
-              if (!hasThinkingText) {
-                stopSpinner('');
-                process.stdout.write('\n');
-                hasThinkingText = true;
-              }
-              process.stdout.write(event.text);
-            }
-            break;
-          case 'text_delta':
-            if (!thinkingDone) {
-              if (hasThinkingText) {
-                process.stdout.write('\n...done thinking.\n\n');
-              } else {
-                stopSpinner('');
-              }
-              thinkingDone = true;
-            }
-            process.stdout.write(event.text);
-            assistantContent += event.text;
-            break;
-          case 'tool_start':
-            if (!thinkingDone) {
-              if (hasThinkingText) {
-                process.stdout.write('\n...done thinking.\n\n');
-              } else {
-                stopSpinner('');
-              }
-              thinkingDone = true;
-            }
-            process.stdout.write(`[${event.name}] `);
-            startSpinner();
-            break;
-          case 'tool_result':
-            stopSpinner('done');
-            break;
-          case 'tool_error':
-            stopSpinner('error');
-            break;
-          case 'error':
-            stopSpinner();
-            console.error(`\nError: ${event.error}`);
-            break;
-        }
-      }
+      }));
 
       if (assistantContent) {
         messages.push({ role: 'assistant', content: assistantContent });

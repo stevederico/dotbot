@@ -57,14 +57,7 @@ export function cleanGeneratedCode(code) {
   if (!code) return { code: '', windowSize: { width: 800, height: 650 } };
 
   let cleanCode = code
-    // Remove markdown code blocks
-    .replace(/```javascript/gi, '')
-    .replace(/```jsx/gi, '')
-    .replace(/```js/gi, '')
-    .replace(/```react/gi, '')
-    .replace(/```typescript/gi, '')
-    .replace(/```tsx/gi, '')
-    .replace(/```/g, '')
+    .replace(/```(?:javascript|jsx|js|react|typescript|tsx)?/gi, '')
     // Remove HTML document wrappers
     .replace(/<html[^>]*>[\s\S]*<\/html>/gi, '')
     .replace(/<head[^>]*>[\s\S]*<\/head>/gi, '')
@@ -307,5 +300,3 @@ export const appgenTools = [
     }
   }
 ];
-
-export default appgenTools;

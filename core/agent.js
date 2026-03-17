@@ -31,7 +31,7 @@ const OLLAMA_BASE = "http://localhost:11434";
  * @param {Array} options.tools - Tool definitions from tools.js
  * @param {AbortSignal} [options.signal] - Optional abort signal
  * @param {Object} [options.provider] - Provider config from AI_PROVIDERS. Defaults to Ollama.
- * @param {Object} [options.context] - Execution context passed to tool execute functions (e.g. databaseManager, dbConfig, userID).
+ * @param {Object} [options.context] - Execution context passed to tool execute functions (e.g. providers, userID).
  * @yields {Object} Stream events for the frontend
  */
 export async function* agentLoop({ model, messages, tools, signal, provider, context, maxTurns }) {
