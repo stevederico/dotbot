@@ -1,3 +1,15 @@
+0.28
+
+  Add --sandbox mode
+  Add --allow domain presets
+  Add domain-gated web_fetch
+  Add domain-gated browser_navigate
+  Add preset-unlocked tools
+  Add API key validation
+  Add models CLI command
+  Add /models REPL command
+  Add /load model command
+
 0.27
 
   Add interactive API key prompt
