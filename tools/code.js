@@ -52,20 +52,6 @@ export const codeTools = [
 
         await unlink(tmpFile).catch(() => {});
 
-        if (context?.databaseManager) {
-          try {
-            await context.databaseManager.logAgentActivity(
-              context.dbConfig.dbType, context.dbConfig.db, context.dbConfig.connectionString,
-              context.userID, {
-                type: 'code_execution',
-                code: input.code.slice(0, 500),
-                output: (stdout || stderr || '').slice(0, 500),
-                success: !stderr
-              }
-            );
-          } catch (e) { /* best effort */ }
-        }
-
         if (stderr) {
           return `Stderr:\n${stderr}\n\nStdout:\n${stdout}`;
         }
@@ -73,20 +59,6 @@ export const codeTools = [
         return stdout || "(no output)";
       } catch (err) {
         await unlink(tmpFile).catch(() => {});
-
-        if (context?.databaseManager) {
-          try {
-            await context.databaseManager.logAgentActivity(
-              context.dbConfig.dbType, context.dbConfig.db, context.dbConfig.connectionString,
-              context.userID, {
-                type: 'code_execution',
-                code: input.code.slice(0, 500),
-                output: (err.stderr || err.message || '').slice(0, 500),
-                success: false
-              }
-            );
-          } catch (e) { /* best effort */ }
-        }
 
         if (err.killed) {
           return "Error: code execution timed out (10s limit)";

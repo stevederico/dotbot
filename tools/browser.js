@@ -616,21 +616,6 @@ export function createBrowserTools(screenshotUrlPattern = (filename) => `/api/ag
             pageSummary += `\n\nPage structure:\n${trimmed}`;
           }
 
-          // Log to activity so Photos app can list the screenshot
-          if (context?.databaseManager) {
-            try {
-              await context.databaseManager.logAgentActivity(
-                context.dbConfig.dbType,
-                context.dbConfig.db,
-                context.dbConfig.connectionString,
-                context.userID,
-                { type: 'image_generation', prompt: `Screenshot: ${title}`, url: screenshotUrl, source: 'browser' }
-              );
-            } catch {
-              /* best effort */
-            }
-          }
-
           // Return image JSON so frontend renders the screenshot inline
           return JSON.stringify({ type: 'image', url: screenshotUrl, prompt: pageSummary });
         } catch (err) {

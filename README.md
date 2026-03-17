@@ -13,7 +13,7 @@
       <img src="https://img.shields.io/github/stars/stevederico/dotbot?style=social" alt="GitHub stars">
     </a>
     <a href="https://github.com/stevederico/dotbot">
-      <img src="https://img.shields.io/badge/version-0.25-green" alt="version">
+      <img src="https://img.shields.io/badge/version-0.28-green" alt="version">
     </a>
     <img src="https://img.shields.io/badge/LOC-11k-orange" alt="Lines of Code">
   </p>
@@ -27,9 +27,10 @@
 
 | | dotbot | nanobot | OpenClaw |
 |---|:---:|:---:|:---:|
-| **Lines of Code** | **11k** | 22k | 1M+ |
+| **Lines of Code** | **~11k** | 22k | 1M+ |
 | **Tools** | **53** | ~10 | ~50 |
-| **Dependencies** | Minimal | Heavy | Heavy |
+| **Dependencies** | **0** | Heavy | Heavy |
+| **Sandbox Mode** | **Built-in** | No | Requires NemoClaw |
 
 Everything you need for AI agents. Nothing you don't. No bloated abstractions. No dependency hell. Just a clean, focused agent that works.
 
@@ -43,7 +44,9 @@ A **streaming AI agent** with tool execution, autonomous tasks, and scheduled jo
 ```bash
 dotbot "What's the weather in San Francisco?"
 dotbot                  # Interactive mode
+dotbot --sandbox        # Sandbox mode (restricted tools)
 dotbot serve --port 3000
+dotbot models           # List available models
 dotbot tools            # List all 53 tools
 ```
 
@@ -79,6 +82,49 @@ dotbot tools
 dotbot stats
 dotbot memory
 ```
+
+### Sandbox Mode
+
+Run dotbot with restricted tool access — deny-by-default.
+
+```bash
+# Full lockdown — safe tools only (memory, search, weather, tasks)
+dotbot --sandbox "What is 2+2?"
+
+# Allow specific domains for web_fetch and browser_navigate
+dotbot --sandbox --allow github
+dotbot --sandbox --allow github --allow slack
+
+# Allow specific tool groups
+dotbot --sandbox --allow messages
+dotbot --sandbox --allow images
+
+# Mix domains and tool groups
+dotbot --sandbox --allow github --allow messages --allow npm
+
+# Custom domain
+dotbot --sandbox --allow api.mycompany.com
+
+# Persistent config in ~/.dotbotrc
+# { "sandbox": true, "sandboxAllow": ["github", "slack", "messages"] }
+```
+
+**What's blocked by default:**
+
+| Category | Tools | How to unlock |
+|----------|-------|---------------|
+| Filesystem writes | `file_write`, `file_delete`, `file_move`, `folder_create` | Cannot unlock |
+| Arbitrary HTTP | `web_fetch` | `--allow <domain>` |
+| Browser | `browser_navigate` | `--allow <domain>` |
+| Code execution | `run_code` | Always allowed (Node.js permission model) |
+| Messaging | `message_*` | `--allow messages` |
+| Images | `image_*` | `--allow images` |
+| Notifications | `notify_user` | `--allow notifications` |
+| App generation | `app_generate`, `app_validate` | Cannot unlock |
+
+**What's always allowed:** `memory_*`, `web_search`, `grokipedia_search`, `file_read`, `file_list`, `weather_get`, `event_*`, `task_*`, `trigger_*`, `schedule_job`, `list_jobs`, `toggle_job`, `cancel_job`
+
+**Domain presets:** `github`, `slack`, `discord`, `npm`, `pypi`, `jira`, `huggingface`, `docker`, `telegram`
 
 ### Library Usage
 
@@ -139,9 +185,13 @@ for await (const event of agent.chat({
 - **Cerebras** — ultra-fast inference
 - **Ollama** — local models, no API cost
 
+### 🔒 **Sandbox Mode**
+- **Deny-by-default** tool access — no files, code, browser, or messaging
+- **Domain allowlists** — `--allow github`, `--allow slack`
+- **Preset-based** tool unlocking — `--allow messages`, `--allow images`
+
 ### 💾 **Pluggable Storage**
 - **SQLite** — zero dependencies with Node.js 22.5+
-- **MongoDB** — scalable with full-text search
 - **Memory** — in-memory for testing
 
 ### 📊 **Full Audit Trail**
@@ -154,7 +204,7 @@ for await (const event of agent.chat({
 ## CLI Reference
 
 ```
-dotbot v0.25 — AI agent CLI
+dotbot v0.28 — AI agent CLI
 
 Usage:
   dotbot "message"            One-shot query
@@ -164,6 +214,7 @@ Usage:
   echo "msg" | dotbot         Pipe input from stdin
 
 Commands:
+  models                      List available models from provider
   doctor                      Check environment and configuration
   tools                       List all available tools
   stats                       Show database statistics
@@ -182,6 +233,8 @@ Options:
   --model, -m      Model name (default: grok-4-1-fast-reasoning)
   --system, -s     Custom system prompt (prepended to default)
   --session        Resume a specific session by ID
+  --sandbox        Restrict tools to safe subset (deny-by-default)
+  --allow          Allow domain/preset in sandbox (github, slack, messages, etc.)
   --db             SQLite database path (default: ./dotbot.db)
   --port           Server port for 'serve' command
   --openai         Enable OpenAI-compatible API endpoints
@@ -197,7 +250,7 @@ Environment Variables:
   OLLAMA_BASE_URL      Base URL for Ollama (default: http://localhost:11434)
 
 Config File:
-  ~/.dotbotrc          JSON config for defaults (provider, model, db)
+  ~/.dotbotrc          JSON config for defaults (provider, model, db, sandbox)
 ```
 
 <br />
@@ -323,9 +376,8 @@ await agent.chat({
 | Technology | Purpose |
 |------------|---------|
 | **Node.js 22.5+** | Runtime with built-in SQLite |
-| **Playwright** | Browser automation |
+| **Chrome DevTools Protocol** | Browser automation (zero deps) |
 | **SQLite** | Default storage (zero deps) |
-| **MongoDB** | Scalable storage option |
 
 <br />
 
@@ -334,12 +386,13 @@ await agent.chat({
 ```
 dotbot/
 ├── bin/
-│   └── dotbot.js           # CLI entry point
+│   └── dotbot.js           # CLI entry point (REPL, server, sandbox mode)
 ├── core/
 │   ├── agent.js            # Streaming agent loop
 │   ├── events.js           # SSE event schemas
 │   ├── compaction.js       # Context window management
 │   ├── normalize.js        # Message format conversion
+│   ├── failover.js         # Cross-provider failover
 │   ├── cron_handler.js     # Scheduled job execution
 │   └── trigger_handler.js  # Event-driven triggers
 ├── storage/
@@ -347,9 +400,8 @@ dotbot/
 │   ├── TaskStore.js        # Task interface
 │   ├── CronStore.js        # Job scheduling interface
 │   ├── TriggerStore.js     # Trigger interface
-│   ├── SQLite*.js          # SQLite adapters
-│   └── Mongo*.js           # MongoDB adapters
-├── tools/                  # 47 built-in tools
+│   └── SQLite*.js          # SQLite adapters
+├── tools/                  # 53 built-in tools
 │   ├── memory.js
 │   ├── web.js
 │   ├── browser.js

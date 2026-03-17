@@ -1,3 +1,13 @@
+0.29
+
+  Extract shared streamEvents
+  Remove dead databaseManager logging
+  Remove dead CDP methods
+  Remove dead compat aliases
+  Remove dead observer module
+  Consolidate cron row mapping
+  Update README sandbox docs
+
 0.28
 
   Add --sandbox mode

@@ -18,10 +18,8 @@ import {
   notifyTools,
   createBrowserTools,
   taskTools,
-  goalTools,
   triggerTools,
   jobTools,
-  cronTools,
   eventTools,
   appgenTools,
 } from './tools/index.js';
@@ -40,9 +38,6 @@ export {
   runWithConcurrency,
   TaskStore,
   SQLiteTaskStore,
-  // Backwards compatibility aliases
-  GoalStore,
-  SQLiteGoalStore,
   TriggerStore,
   SQLiteTriggerStore,
   SQLiteMemoryStore,
@@ -65,10 +60,8 @@ export {
   browserTools,
   createBrowserTools,
   taskTools,
-  goalTools,   // backwards compatibility alias
   triggerTools,
   jobTools,
-  cronTools,   // backwards compatibility alias
   eventTools,
   appgenTools,
 } from './tools/index.js';

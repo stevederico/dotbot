@@ -176,16 +176,6 @@ export const imageTools = [
         return result.error;
       }
 
-      // Log to activity for persistence
-      if (context?.databaseManager) {
-        try {
-          await context.databaseManager.logAgentActivity(
-            context.dbConfig.dbType, context.dbConfig.db, context.dbConfig.connectionString,
-            context.userID, { type: 'image_generation', prompt: input.prompt, url: result.url, source: 'agent' }
-          );
-        } catch (e) { /* best effort */ }
-      }
-
       return JSON.stringify({ type: 'image', url: result.url, prompt: input.prompt });
     },
   },

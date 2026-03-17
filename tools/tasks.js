@@ -400,5 +400,3 @@ export const taskTools = [
   },
 ];
 
-// Backwards compatibility: export goalTools as alias
-export const goalTools = taskTools;
