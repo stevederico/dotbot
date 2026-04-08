@@ -12,7 +12,7 @@ const CONTEXT_LIMITS = {
   openai: 120000,
   xai: 120000,
   ollama: 6000,
-  dottie_desktop: 6000,
+  mlx_local: 6000,
 };
 
 /** Number of recent messages to always preserve verbatim. */

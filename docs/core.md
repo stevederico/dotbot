@@ -50,7 +50,7 @@ Standard AI Agent Tools (Industry Common)
   14. Notifications - Push alerts to users
   15. Weather - Current conditions/forecasts
 
-  Your Library (@dottie/agent) Has:
+  dotbot Has:
 
   ✅ Memory (6 tools)
   ✅ Web (3 tools)

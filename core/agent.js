@@ -174,7 +174,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
       };
     };
 
-    // Local providers (ollama, dottie_desktop): direct fetch, no failover
+    // Local providers (ollama, mlx_local): direct fetch, no failover
     if (provider.local) {
       const { url, headers, body } = buildAgentRequest(provider);
       response = await fetch(url, { method: "POST", headers, body, signal });
@@ -210,8 +210,9 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
       const result = yield* parseAnthropicStream(response, fullContent, toolCalls, signal, activeProvider.id);
       fullContent = result.fullContent;
       toolCalls = result.toolCalls;
-    } else if (activeProvider.id === "dottie_desktop") {
-      // Dottie Desktop serves local models which may use:
+    } else if (activeProvider.id === "mlx_local") {
+      // Local MLX-style OpenAI-compatible server. Models served this way
+      // may emit output in one of three formats:
       // 1. gpt-oss channel tokens (<|channel|>analysis/final<|message|>)
       // 2. Native reasoning (delta.reasoning from parseOpenAIStream)
       // 3. Plain text (LFM2.5, SmolLM, etc. — no special tokens)
@@ -235,6 +236,21 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
         if (done) {
           fullContent = value.fullContent;
           toolCalls = value.toolCalls;
+          // Flush buffered plain-text responses that never hit the
+          // CHANNEL_DETECT_THRESHOLD. Happens for short greetings and
+          // small-talk from models that don't emit gpt-oss channel tokens
+          // (Gemma 4 E2B, LFM2.5, SmolLM, etc.). Without this flush, the
+          // rawBuffer is silently discarded and the downstream consumer
+          // never receives any text_delta — the UI renders an empty bubble.
+          // Skip if the buffer contains tool call markers so the existing
+          // post-loop parseToolCalls() below can handle them.
+          if (!usesPassthrough && !usesNativeReasoning && !analysisStarted && !finalMarkerFound && rawBuffer.length > 0) {
+            if (!hasToolCallMarkers(rawBuffer)) {
+              const textEvent = { type: "text_delta", text: rawBuffer };
+              validateEvent(textEvent);
+              yield textEvent;
+            }
+          }
           break;
         }
 
@@ -270,7 +286,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
         // the model doesn't use gpt-oss format (e.g. LFM2.5, SmolLM).
         // Flush buffer and switch to passthrough for remaining tokens.
         if (!analysisStarted && !finalMarkerFound && rawBuffer.length > CHANNEL_DETECT_THRESHOLD) {
-          console.log("[dottie_desktop] no channel tokens after", rawBuffer.length, "chars — switching to passthrough");
+          console.log("[mlx_local] no channel tokens after", rawBuffer.length, "chars — switching to passthrough");
           usesPassthrough = true;
           const textEvent = { type: "text_delta", text: rawBuffer };
           validateEvent(textEvent);
@@ -285,7 +301,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
             if (aIdx !== -1) {
               analysisStarted = true;
               lastThinkingYieldPos = aIdx + ANALYSIS_MARKER.length;
-              console.log("[dottie_desktop] analysis marker found at", aIdx, "| yieldPos:", lastThinkingYieldPos);
+              console.log("[mlx_local] analysis marker found at", aIdx, "| yieldPos:", lastThinkingYieldPos);
             }
           }
 
@@ -295,7 +311,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
             if (endIdx !== -1) {
               const chunk = rawBuffer.slice(lastThinkingYieldPos, endIdx);
               if (chunk) {
-                console.log("[dottie_desktop] thinking (final):", chunk.slice(0, 80));
+                console.log("[mlx_local] thinking (final):", chunk.slice(0, 80));
                 const thinkingEvent = {
                   type: "thinking",
                   text: chunk,
@@ -309,7 +325,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
             } else {
               const chunk = rawBuffer.slice(lastThinkingYieldPos);
               if (chunk) {
-                console.log("[dottie_desktop] thinking (incr):", chunk.slice(0, 80));
+                console.log("[mlx_local] thinking (incr):", chunk.slice(0, 80));
                 const thinkingEvent = {
                   type: "thinking",
                   text: chunk,
@@ -325,7 +341,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
           // Check for final channel marker
           const fIdx = rawBuffer.indexOf(FINAL_MARKER);
           if (fIdx !== -1) {
-            console.log("[dottie_desktop] final marker found at", fIdx, "| bufLen:", rawBuffer.length);
+            console.log("[mlx_local] final marker found at", fIdx, "| bufLen:", rawBuffer.length);
             finalMarkerFound = true;
             lastFinalYieldPos = fIdx + FINAL_MARKER.length;
             const pending = rawBuffer.slice(lastFinalYieldPos);
@@ -740,8 +756,9 @@ export async function getOllamaStatus() {
 }
 
 /**
- * Check if Dottie Desktop is running and list available models.
- * Uses the OpenAI-compatible /v1/models endpoint.
+ * Check if a local OpenAI-compatible model server is running and list
+ * available models. Defaults to the MLX LM server convention
+ * (http://localhost:1316/v1) and can be overridden with MLX_LOCAL_URL.
  *
  * @returns {Promise<{running: boolean, models: Array<{name: string}>}>}
  */
@@ -765,8 +782,8 @@ function stripGptOssTokens(text) {
   return text.replace(TOKEN_RE, "").trim();
 }
 
-export async function getDottieDesktopStatus() {
-  const baseUrl = (process.env.DOTTIE_DESKTOP_URL || 'http://localhost:1316/v1').replace(/\/v1$/, '');
+export async function getMlxLocalStatus() {
+  const baseUrl = (process.env.MLX_LOCAL_URL || 'http://localhost:1316/v1').replace(/\/v1$/, '');
   try {
     const res = await fetch(`${baseUrl}/v1/models`);
     if (!res.ok) return { running: false, models: [] };

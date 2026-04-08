@@ -25,6 +25,7 @@ import { createTriggerHandler } from './trigger_handler.js';
  * @param {Object} [options.providers] - Provider API keys: { anthropic: { apiKey }, openai: { apiKey }, xai: { apiKey } }
  * @param {Array} [options.tools] - Tool definitions (default: coreTools)
  * @param {number} [options.staleThresholdMs=86400000] - Skip heartbeat if user idle longer than this (default: 24h)
+ * @param {string} [options.notificationTitle='Assistant'] - Title used when cron/trigger handlers dispatch notifications
  * @param {Function} [options.systemPrompt] - System prompt builder function
  * @param {Function} [options.screenshotUrlPattern] - Screenshot URL pattern function
  * @param {Object} [options.compaction] - Compaction settings
@@ -42,6 +43,7 @@ export async function init({
   providers = {},
   tools = coreTools,
   staleThresholdMs = 24 * 60 * 60 * 1000,
+  notificationTitle = 'Assistant',
   systemPrompt,
   screenshotUrlPattern,
   compaction = { enabled: true },
@@ -68,7 +70,8 @@ export async function init({
     memory: memoryStore,
   };
 
-  // For stores-only mode (e.g., dottie-desktop), skip session/cron/agent setup
+  // For stores-only mode (host manages sessions/cron/agent itself),
+  // skip session/cron/agent setup
   if (storesOnly) {
     return {
       stores,
@@ -101,6 +104,7 @@ export async function init({
     memoryStore,
     providers,
     staleThresholdMs,
+    notificationTitle,
     hooks,
   });
 
@@ -134,6 +138,7 @@ export async function init({
     triggerStore,
     memoryStore,
     providers,
+    notificationTitle,
     hooks,
   });
 

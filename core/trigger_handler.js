@@ -1,8 +1,8 @@
 /**
  * Trigger handler for dotbot.
  *
- * Extracted from dottie-os server.js to provide a reusable trigger executor
- * that handles event matching, firing, and notification hooks.
+ * Reusable trigger executor that handles event matching, firing, and
+ * notification hooks.
  */
 
 import { compactMessages } from './compaction.js';
@@ -16,6 +16,7 @@ import { compactMessages } from './compaction.js';
  * @param {Object} options.triggerStore - Trigger store instance
  * @param {Object} options.memoryStore - Memory store instance (optional)
  * @param {Object} options.providers - Provider API keys for compaction
+ * @param {string} [options.notificationTitle='Assistant'] - Title used when dispatching notifications via hooks.onNotification
  * @param {Object} [options.hooks] - Host-specific hooks
  * @param {Function} [options.hooks.onNotification] - async (userId, { title, body, type }) => void
  * @returns {Function} Async function: (eventType, userId, eventData?) => Promise<void>
@@ -26,6 +27,7 @@ export function createTriggerHandler({
   triggerStore,
   memoryStore,
   providers = {},
+  notificationTitle = 'Assistant',
   hooks = {},
 }) {
   /**
@@ -133,7 +135,7 @@ export function createTriggerHandler({
     if (trimmed && trimmed.length > 10 && updatedSession.owner && hooks.onNotification) {
       try {
         await hooks.onNotification(updatedSession.owner, {
-          title: 'Dottie',
+          title: notificationTitle,
           body: trimmed.slice(0, 500),
           type: 'trigger',
         });
