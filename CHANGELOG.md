@@ -1,3 +1,18 @@
+0.30
+
+  Flush buffered plain text
+  Add agentLoop regression tests
+  Rename dottie_desktop to mlx_local
+  Rename getDottieDesktopStatus helper
+  Rename DOTTIE_DESKTOP_URL env var
+  Parameterize notification title
+  Default agentName to Assistant
+  Scrub host-specific doc references
+  Skip heartbeat without tasks
+  Fail closed on task fetch error
+  Add mlx_local provider entry
+  Add cron_handler regression tests
+
 0.29
 
   Extract shared streamEvents

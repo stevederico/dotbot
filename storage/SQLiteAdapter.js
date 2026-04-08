@@ -11,7 +11,7 @@ import { toStandardFormat } from '../core/normalize.js';
  * @param {string} options.agentPersonality - Personality description
  * @returns {string} System prompt
  */
-export function defaultSystemPrompt({ agentName = 'Dottie', agentPersonality = '' } = {}) {
+export function defaultSystemPrompt({ agentName = 'Assistant', agentPersonality = '' } = {}) {
   const now = new Date().toISOString();
   return `You are a helpful personal AI assistant called ${agentName}.${agentPersonality ? `\nYour personality and tone: ${agentPersonality}. Embody this in all responses.` : ''}
 You have access to tools for searching the web, reading/writing files, fetching URLs, running code, long-term memory, and scheduled tasks.

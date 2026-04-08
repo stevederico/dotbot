@@ -48,11 +48,11 @@ Absolutely! Yes, you should definitely protect .ssh and similar system-level dir
   ~/Library/Application Support/Firefox/
 
 
-  Dottie-Specific (Your App)
+  Host-App Data (Example)
 
-  ~/.dottie/logs/           # May contain user conversations
-  ~/.dottie/chat_history.json
-  ~/.dottie/*.db
+  ~/.myapp/logs/           # May contain user conversations
+  ~/.myapp/chat_history.json
+  ~/.myapp/*.db
 
 
   Bottom line: Any path under ~ (home directory) that contains credentials, personal data, command history, or configuration files should be protected. The general rule is: never search/glob/grep from ~ or /Users/sd root — only within specific project directories.

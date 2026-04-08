@@ -1,9 +1,8 @@
 /**
  * Cron task handler for dotbot.
  *
- * Extracted from dottie-os server.js to provide a reusable cron task executor
- * that handles session resolution, stale user gates, task injection, and
- * notification hooks.
+ * Reusable cron task executor that handles session resolution, stale user
+ * gates, task injection, and notification hooks.
  */
 
 import { compactMessages } from './compaction.js';
@@ -18,6 +17,7 @@ import { compactMessages } from './compaction.js';
  * @param {Object} options.memoryStore - Memory store instance (optional)
  * @param {Object} options.providers - Provider API keys for compaction
  * @param {number} [options.staleThresholdMs=86400000] - Skip heartbeat if user idle longer than this (default: 24h)
+ * @param {string} [options.notificationTitle='Assistant'] - Title used when dispatching notifications via hooks.onNotification
  * @param {Object} [options.hooks] - Host-specific hooks
  * @param {Function} [options.hooks.onNotification] - async (userId, { title, body, type }) => void
  * @param {Function} [options.hooks.taskFetcher] - async (userId, taskId) => task object
@@ -31,6 +31,7 @@ export function createCronHandler({
   memoryStore,
   providers = {},
   staleThresholdMs = 24 * 60 * 60 * 1000,
+  notificationTitle = 'Assistant',
   hooks = {},
 }) {
   // Agent reference - will be set after init() creates the agent
@@ -139,7 +140,7 @@ export function createCronHandler({
     if (trimmed && trimmed.length > 10 && updatedSession.owner && hooks.onNotification) {
       try {
         await hooks.onNotification(updatedSession.owner, {
-          title: 'Dottie',
+          title: notificationTitle,
           body: trimmed.slice(0, 500),
           type: task.name === 'heartbeat' ? 'heartbeat' : 'cron',
         });
@@ -224,33 +225,43 @@ export function createCronHandler({
         tasks = await taskStore.findTasks(session.owner, { status: ['pending', 'in_progress'] });
       }
 
-      if (tasks.length > 0) {
-        // Check if any task is in auto mode with pending steps
-        const autoTask = tasks.find(t => t.mode === 'auto' && t.steps?.some(s => !s.done));
-        if (autoTask) {
-          const doneCount = autoTask.steps.filter(s => s.done).length;
-          const nextStep = autoTask.steps.find(s => !s.done);
-          taskContent = `[Heartbeat] Auto-mode task "${autoTask.description}" has pending steps (${doneCount}/${autoTask.steps.length} done). Call task_work with task_id "${autoTask._id || autoTask.id}" to execute: "${nextStep.text}"`;
-        } else {
-          // List all active tasks
-          const lines = tasks.map(t => {
-            let line = `• [${t.priority}] ${t.description}`;
-            if (t.mode) line += ` [${t.mode}]`;
-            if (t.deadline) line += ` (due: ${t.deadline})`;
-            if (t.steps && t.steps.length > 0) {
-              const done = t.steps.filter(s => s.done).length;
-              line += ` (${done}/${t.steps.length} steps)`;
-              for (const step of t.steps) {
-                line += `\n  ${step.done ? '[x]' : '[ ]'} ${step.text}`;
-              }
+      // Skip the LLM call entirely when there's nothing to discuss. A heartbeat
+      // with no active tasks is a waste of tokens on every provider (and is
+      // especially expensive on cloud providers that charge per call). The
+      // caller at handleTaskFire() treats a null return as "skip this tick".
+      if (tasks.length === 0) {
+        console.log(`[cron] heartbeat for ${session.owner}: no active tasks, skipping AI call`);
+        return null;
+      }
+
+      // Check if any task is in auto mode with pending steps
+      const autoTask = tasks.find(t => t.mode === 'auto' && t.steps?.some(s => !s.done));
+      if (autoTask) {
+        const doneCount = autoTask.steps.filter(s => s.done).length;
+        const nextStep = autoTask.steps.find(s => !s.done);
+        taskContent = `[Heartbeat] Auto-mode task "${autoTask.description}" has pending steps (${doneCount}/${autoTask.steps.length} done). Call task_work with task_id "${autoTask._id || autoTask.id}" to execute: "${nextStep.text}"`;
+      } else {
+        // List all active tasks
+        const lines = tasks.map(t => {
+          let line = `• [${t.priority}] ${t.description}`;
+          if (t.mode) line += ` [${t.mode}]`;
+          if (t.deadline) line += ` (due: ${t.deadline})`;
+          if (t.steps && t.steps.length > 0) {
+            const done = t.steps.filter(s => s.done).length;
+            line += ` (${done}/${t.steps.length} steps)`;
+            for (const step of t.steps) {
+              line += `\n  ${step.done ? '[x]' : '[ ]'} ${step.text}`;
             }
-            return line;
-          });
-          taskContent += `\n\nActive tasks:\n${lines.join('\n')}`;
-        }
+          }
+          return line;
+        });
+        taskContent += `\n\nActive tasks:\n${lines.join('\n')}`;
       }
     } catch (err) {
+      // Fail closed: if we can't fetch tasks, skip this heartbeat rather
+      // than call the LLM with a meaningless default prompt.
       console.error('[cron] failed to fetch tasks for heartbeat:', err.message);
+      return null;
     }
 
     return taskContent;

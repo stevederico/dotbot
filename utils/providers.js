@@ -133,4 +133,25 @@ export const AI_PROVIDERS = {
     }),
     formatResponse: (data) => data.choices?.[0]?.message?.content
   },
+  mlx_local: {
+    // Local MLX-style OpenAI-compatible server (e.g. mlx_lm.server, LM Studio,
+    // vLLM, llama.cpp server). Routes through the `mlx_local` branch in
+    // core/agent.js which auto-detects gpt-oss channel tokens, native
+    // reasoning, and plain-text responses. Override the URL with MLX_LOCAL_URL.
+    id: 'mlx_local',
+    name: 'Local (MLX)',
+    apiUrl: process.env.MLX_LOCAL_URL || 'http://127.0.0.1:1316/v1',
+    defaultModel: '',
+    models: [],
+    local: true,
+    headers: () => ({
+      'Content-Type': 'application/json'
+    }),
+    endpoint: '/chat/completions',
+    formatRequest: (messages, model) => ({
+      model,
+      messages
+    }),
+    formatResponse: (data) => data.choices?.[0]?.message?.content
+  },
 };

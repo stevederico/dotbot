@@ -37,7 +37,7 @@ export const memoryTools = [
           type: "array",
           items: { type: "string" },
           description:
-            "Short tags for categorization. e.g. ['personal', 'name'] or ['project', 'dottie']",
+            "Short tags for categorization. e.g. ['personal', 'name'] or ['project', 'myapp']",
         },
       },
       required: ["content"],
