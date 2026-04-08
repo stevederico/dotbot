@@ -115,7 +115,7 @@ Commands:
   events [--summary]          View audit log
 
 Options:
-  --provider, -p   AI provider: xai, anthropic, openai, ollama (default: xai)
+  --provider, -p   AI provider: xai, anthropic, openai, ollama, mlx_local (default: xai)
   --model, -m      Model name (default: grok-4-1-fast-reasoning)
   --system, -s     Custom system prompt (prepended to default)
   --session        Resume a specific session by ID
@@ -134,6 +134,7 @@ Environment Variables:
   ANTHROPIC_API_KEY    API key for Anthropic
   OPENAI_API_KEY       API key for OpenAI
   OLLAMA_BASE_URL      Base URL for Ollama (default: http://localhost:11434)
+  MLX_LOCAL_URL        Base URL for a local MLX-style OpenAI-compatible server (default: http://127.0.0.1:1316/v1)
 
 Config File:
   ~/.dotbotrc                 JSON config for defaults (provider, model, db)
@@ -293,6 +294,13 @@ async function getProviderConfig(providerId) {
   if (providerId === 'ollama') {
     const baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
     return { ...base, apiUrl: `${baseUrl}/api/chat` };
+  }
+
+  // Local OpenAI-compatible servers (mlx_local, etc.) don't use API keys —
+  // they're served from localhost and the apiUrl is already baked into the
+  // provider config (or overridden via env var inside providers.js).
+  if (base.local) {
+    return base;
   }
 
   const envKey = base.envKey;
