@@ -55,5 +55,5 @@ Absolutely! Yes, you should definitely protect .ssh and similar system-level dir
   ~/.myapp/*.db
 
 
-  Bottom line: Any path under ~ (home directory) that contains credentials, personal data, command history, or configuration files should be protected. The general rule is: never search/glob/grep from ~ or /Users/sd root — only within specific project directories.
+  Bottom line: Any path under ~ (home directory) that contains credentials, personal data, command history, or configuration files should be protected. The general rule is: never search/glob/grep from the home directory root — only within specific project directories.
   ctrl+q to copy · 6 snippets

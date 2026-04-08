@@ -5,18 +5,6 @@
     The ultra-lean AI agent.<br>
     11k lines. 53 tools. 0 dependencies.
   </h3>
-  <p align="center">
-    <a href="https://opensource.org/licenses/mit">
-      <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License">
-    </a>
-    <a href="https://github.com/stevederico/dotbot/stargazers">
-      <img src="https://img.shields.io/github/stars/stevederico/dotbot?style=social" alt="GitHub stars">
-    </a>
-    <a href="https://github.com/stevederico/dotbot">
-      <img src="https://img.shields.io/badge/version-0.28-green" alt="version">
-    </a>
-    <img src="https://img.shields.io/badge/LOC-11k-orange" alt="Lines of Code">
-  </p>
 </div>
 
 <br />
@@ -204,7 +192,7 @@ for await (const event of agent.chat({
 ## CLI Reference
 
 ```
-dotbot v0.28 — AI agent CLI
+dotbot — AI agent CLI
 
 Usage:
   dotbot "message"            One-shot query
@@ -229,7 +217,7 @@ Commands:
   events [--summary]          View audit log
 
 Options:
-  --provider, -p   AI provider: xai, anthropic, openai, ollama (default: xai)
+  --provider, -p   AI provider: xai, anthropic, openai, ollama, mlx_local (default: xai)
   --model, -m      Model name (default: grok-4-1-fast-reasoning)
   --system, -s     Custom system prompt (prepended to default)
   --session        Resume a specific session by ID
@@ -248,6 +236,7 @@ Environment Variables:
   ANTHROPIC_API_KEY    API key for Anthropic
   OPENAI_API_KEY       API key for OpenAI
   OLLAMA_BASE_URL      Base URL for Ollama (default: http://localhost:11434)
+  MLX_LOCAL_URL        Base URL for a local MLX-style OpenAI-compatible server (default: http://127.0.0.1:1316/v1)
 
 Config File:
   ~/.dotbotrc          JSON config for defaults (provider, model, db, sandbox)

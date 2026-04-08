@@ -1,3 +1,10 @@
+0.31
+
+  Document mlx_local provider
+  Fix CLI local auth
+  Remove shields.io badges
+  Generify personal path example
+
 0.30
 
   Flush buffered plain text
