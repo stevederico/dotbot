@@ -162,7 +162,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
       };
 
       // Include tool definitions for non-local providers and local providers
-      // that support native tool calling (e.g., GLM-4.7 via mlx_lm.server v0.30.7+)
+      // that support native tool calling (e.g., GLM-4.7 via local LLM server v0.30.7+)
       if (!targetProvider.local || targetProvider.supportsToolRole) {
         requestBody.tools = toolDefs;
       }
@@ -174,7 +174,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
       };
     };
 
-    // Local providers (ollama, mlx_local): direct fetch, no failover
+    // Local providers (ollama, local): direct fetch, no failover
     if (provider.local) {
       const { url, headers, body } = buildAgentRequest(provider);
       response = await fetch(url, { method: "POST", headers, body, signal });
@@ -210,8 +210,8 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
       const result = yield* parseAnthropicStream(response, fullContent, toolCalls, signal, activeProvider.id);
       fullContent = result.fullContent;
       toolCalls = result.toolCalls;
-    } else if (activeProvider.id === "mlx_local") {
-      // Local MLX-style OpenAI-compatible server. Models served this way
+    } else if (activeProvider.id === "local") {
+      // Local OpenAI-compatible server. Models served this way
       // may emit output in one of three formats:
       // 1. gpt-oss channel tokens (<|channel|>analysis/final<|message|>)
       // 2. Native reasoning (delta.reasoning from parseOpenAIStream)
@@ -286,7 +286,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
         // the model doesn't use gpt-oss format (e.g. LFM2.5, SmolLM).
         // Flush buffer and switch to passthrough for remaining tokens.
         if (!analysisStarted && !finalMarkerFound && rawBuffer.length > CHANNEL_DETECT_THRESHOLD) {
-          console.log("[mlx_local] no channel tokens after", rawBuffer.length, "chars — switching to passthrough");
+          console.log("[local] no channel tokens after", rawBuffer.length, "chars — switching to passthrough");
           usesPassthrough = true;
           const textEvent = { type: "text_delta", text: rawBuffer };
           validateEvent(textEvent);
@@ -301,7 +301,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
             if (aIdx !== -1) {
               analysisStarted = true;
               lastThinkingYieldPos = aIdx + ANALYSIS_MARKER.length;
-              console.log("[mlx_local] analysis marker found at", aIdx, "| yieldPos:", lastThinkingYieldPos);
+              console.log("[local] analysis marker found at", aIdx, "| yieldPos:", lastThinkingYieldPos);
             }
           }
 
@@ -311,7 +311,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
             if (endIdx !== -1) {
               const chunk = rawBuffer.slice(lastThinkingYieldPos, endIdx);
               if (chunk) {
-                console.log("[mlx_local] thinking (final):", chunk.slice(0, 80));
+                console.log("[local] thinking (final):", chunk.slice(0, 80));
                 const thinkingEvent = {
                   type: "thinking",
                   text: chunk,
@@ -325,7 +325,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
             } else {
               const chunk = rawBuffer.slice(lastThinkingYieldPos);
               if (chunk) {
-                console.log("[mlx_local] thinking (incr):", chunk.slice(0, 80));
+                console.log("[local] thinking (incr):", chunk.slice(0, 80));
                 const thinkingEvent = {
                   type: "thinking",
                   text: chunk,
@@ -341,7 +341,7 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
           // Check for final channel marker
           const fIdx = rawBuffer.indexOf(FINAL_MARKER);
           if (fIdx !== -1) {
-            console.log("[mlx_local] final marker found at", fIdx, "| bufLen:", rawBuffer.length);
+            console.log("[local] final marker found at", fIdx, "| bufLen:", rawBuffer.length);
             finalMarkerFound = true;
             lastFinalYieldPos = fIdx + FINAL_MARKER.length;
             const pending = rawBuffer.slice(lastFinalYieldPos);
@@ -757,8 +757,8 @@ export async function getOllamaStatus() {
 
 /**
  * Check if a local OpenAI-compatible model server is running and list
- * available models. Defaults to the MLX LM server convention
- * (http://localhost:1316/v1) and can be overridden with MLX_LOCAL_URL.
+ * available models. Defaults to the local LLM server convention
+ * (http://localhost:1316/v1) and can be overridden with LOCAL_LLM_URL.
  *
  * @returns {Promise<{running: boolean, models: Array<{name: string}>}>}
  */
@@ -783,7 +783,7 @@ function stripGptOssTokens(text) {
 }
 
 export async function getMlxLocalStatus() {
-  const baseUrl = (process.env.MLX_LOCAL_URL || 'http://localhost:1316/v1').replace(/\/v1$/, '');
+  const baseUrl = (process.env.LOCAL_LLM_URL || 'http://localhost:1316/v1').replace(/\/v1$/, '');
   try {
     const res = await fetch(`${baseUrl}/v1/models`);
     if (!res.ok) return { running: false, models: [] };

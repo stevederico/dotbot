@@ -217,7 +217,7 @@ Commands:
   events [--summary]          View audit log
 
 Options:
-  --provider, -p   AI provider: xai, anthropic, openai, ollama, mlx_local (default: xai)
+  --provider, -p   AI provider: xai, anthropic, openai, ollama, local (default: xai)
   --model, -m      Model name (default: grok-4-1-fast-reasoning)
   --system, -s     Custom system prompt (prepended to default)
   --session        Resume a specific session by ID
@@ -236,7 +236,7 @@ Environment Variables:
   ANTHROPIC_API_KEY    API key for Anthropic
   OPENAI_API_KEY       API key for OpenAI
   OLLAMA_BASE_URL      Base URL for Ollama (default: http://localhost:11434)
-  MLX_LOCAL_URL        Base URL for a local MLX-style OpenAI-compatible server (default: http://127.0.0.1:1316/v1)
+  LOCAL_LLM_URL        Base URL for a local OpenAI-compatible LLM server (default: http://127.0.0.1:1316/v1)
 
 Config File:
   ~/.dotbotrc          JSON config for defaults (provider, model, db, sandbox)
