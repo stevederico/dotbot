@@ -12,11 +12,11 @@
  * 3. LFM2.5 native format with markers:
  *    <|tool_call_start|>[tool_name(arg1="value1")]<|tool_call_end|>
  *
- * 4. LFM2.5 bare Pythonic format (markers stripped by mlx_lm.server):
+ * 4. LFM2.5 bare Pythonic format (markers stripped by local LLM server):
  *    [tool_name(arg1="value1", arg2="value2")]
  *
  * Used when the model doesn't support native OpenAI-style tool calling
- * (e.g., mlx_lm.server) and tool definitions are injected via system prompt.
+ * (e.g., local LLM server) and tool definitions are injected via system prompt.
  */
 
 const TOOL_CALL_RE = /<tool_call>([\s\S]*?)<\/tool_call>/g;
@@ -135,7 +135,7 @@ export function parseToolCalls(text) {
     }
   }
 
-  // Format 4: [func_name(key="val")]  (bare Pythonic, markers stripped by mlx_lm.server)
+  // Format 4: [func_name(key="val")]  (bare Pythonic, markers stripped by local LLM server)
   if (calls.length === 0) {
     BARE_PYTHONIC_RE.lastIndex = 0;
     while ((match = BARE_PYTHONIC_RE.exec(text)) !== null) {

@@ -1,3 +1,9 @@
+0.32
+
+  Rename mlx_local provider to local
+  Rename MLX_LOCAL_URL env var to LOCAL_LLM_URL
+  Remove MLX references from comments and docs
+
 0.31
 
   Document mlx_local provider

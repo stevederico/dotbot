@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { agentLoop } from '../core/agent.js';
 
 /**
- * Regression tests for the mlx_local provider branch of agentLoop.
+ * Regression tests for the local provider branch of agentLoop.
  *
  * These cover the flush branch added in 0.30 that handles short plain-text
  * responses from local models that never emit gpt-oss channel tokens
@@ -13,13 +13,13 @@ import { agentLoop } from '../core/agent.js';
  */
 
 /**
- * Build a minimal mlx_local-style provider for agentLoop tests.
- * The `id` must be "mlx_local" to hit the buffered-parsing branch,
+ * Build a minimal local-style provider for agentLoop tests.
+ * The `id` must be "local" to hit the buffered-parsing branch,
  * and `local: true` skips the failover path for a direct fetch.
  */
 function makeLocalProvider() {
   return {
-    id: 'mlx_local',
+    id: 'local',
     name: 'Test Local',
     apiUrl: 'http://127.0.0.1:1316/v1',
     endpoint: '/chat/completions',
@@ -61,7 +61,7 @@ function stubFetch(response) {
   return () => { globalThis.fetch = original; };
 }
 
-describe('agentLoop — mlx_local short plain-text response flush', () => {
+describe('agentLoop — local short plain-text response flush', () => {
   let restoreFetch;
 
   afterEach(() => {
