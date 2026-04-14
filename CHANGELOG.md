@@ -1,3 +1,11 @@
+0.38
+
+  Add chatRaw method
+  Add resolveProvider method
+  Add filterTools method
+  Add buildSystemPrompt helper
+  Fix agentLoop import scope
+
 0.37
 
   Log LLM request size (messages, tools, estimated tokens)

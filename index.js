@@ -70,8 +70,9 @@ export {
 import { AI_PROVIDERS } from './utils/providers.js';
 export { AI_PROVIDERS };
 
-// Export agent loop (already well-abstracted)
-export { agentLoop } from './core/agent.js';
+// Import and export agent loop
+import { agentLoop } from './core/agent.js';
+export { agentLoop };
 
 // Export compaction utilities
 export { compactMessages, estimateTokens } from './core/compaction.js';
@@ -88,6 +89,33 @@ export { init } from './core/init.js';
 // Export handler factories for advanced use cases
 export { createCronHandler } from './core/cron_handler.js';
 export { createTriggerHandler } from './core/trigger_handler.js';
+
+/**
+ * Build a default system prompt from parts
+ *
+ * @param {Object} options
+ * @param {string} [options.agentName] - Agent name (default: 'Assistant')
+ * @param {string} [options.userName] - User's name
+ * @param {string} [options.agentPersonality] - Personality/tone description
+ * @param {string} [options.userContext] - Additional user context
+ * @param {string} [options.memories] - Remembered facts
+ * @param {string} [options.timestamp] - Current timestamp
+ * @returns {string} Formatted system prompt
+ */
+export function buildSystemPrompt({ agentName = 'Assistant', userName, agentPersonality, userContext, memories, timestamp } = {}) {
+  const parts = [];
+  let identity = `You are a helpful personal AI assistant called ${agentName}.`;
+  if (userName) identity += `\nYou are speaking with ${userName}.`;
+  if (agentPersonality) identity += `\nYour personality and tone: ${agentPersonality}.`;
+  identity += `\nKeep responses concise. Use markdown for formatting.`;
+  identity += `\nAfter your response, optionally add: <followup>suggested next message</followup>`;
+  identity += `\nRespond directly — no preambles.`;
+  parts.push(identity);
+  if (userContext) parts.push(`## User Context\n\n${userContext}`);
+  if (memories) parts.push(`## Remembered Facts\n\n${memories}`);
+  if (timestamp) parts.push(`## Current Time\n\n${timestamp}`);
+  return parts.join('\n\n---\n\n');
+}
 
 /**
  * Create an agent instance with configurable stores, providers, and tools
@@ -175,19 +203,7 @@ export function createAgent({
         eventStore,
       };
 
-      // Resolve string provider ID to a full provider config object.
-      // agentLoop expects a provider config (with apiUrl, headers, etc.),
-      // not a string ID. Inject the API key from the providers config.
-      let resolvedProvider = provider;
-      if (typeof provider === 'string') {
-        const base = AI_PROVIDERS[provider];
-        if (base) {
-          const apiKey = providers[provider]?.apiKey;
-          resolvedProvider = apiKey
-            ? { ...base, headers: () => base.headers(apiKey) }
-            : base;
-        }
-      }
+      const resolvedProvider = this.resolveProvider(provider);
 
       // Run agent loop
       const generator = agentLoop({
@@ -217,6 +233,75 @@ export function createAgent({
 
       // Save session after loop completes
       await sessionStore.saveSession(sessionId, finalMessages, finalModel, finalProvider);
+    },
+
+    /**
+     * Run agent chat loop with raw messages (no session management)
+     *
+     * @param {Object} params
+     * @param {Array} params.messages - Full message array
+     * @param {string|Object} params.provider - AI provider ID or config
+     * @param {string} params.model - Model name
+     * @param {AbortSignal} [params.signal] - Abort signal
+     * @param {Object} [params.context] - Tool execution context
+     * @param {number} [params.maxTurns] - Max agent loop turns
+     * @returns {AsyncGenerator} SSE event stream
+     */
+    async* chatRaw({ messages, provider, model, signal, context = {}, maxTurns, tools: overrideTools }) {
+      const enhancedContext = {
+        ...context,
+        providers,
+        cronStore,
+        taskStore,
+        triggerStore,
+        memoryStore,
+        eventStore,
+      };
+
+      const resolvedProvider = this.resolveProvider(provider);
+
+      const generator = agentLoop({
+        messages,
+        tools: overrideTools || finalTools,
+        provider: resolvedProvider,
+        model,
+        signal,
+        context: enhancedContext,
+        maxTurns,
+      });
+
+      for await (const event of generator) {
+        yield event;
+      }
+    },
+
+    /**
+     * Resolve a provider string ID to a full provider config with API key
+     *
+     * @param {string|Object} providerIdOrConfig - Provider ID string or config object
+     * @returns {Object|string} Resolved provider config
+     */
+    resolveProvider(providerIdOrConfig) {
+      if (typeof providerIdOrConfig !== 'string') return providerIdOrConfig;
+      const base = AI_PROVIDERS[providerIdOrConfig];
+      if (!base) return providerIdOrConfig;
+      const apiKey = providers[providerIdOrConfig]?.apiKey;
+      return apiKey ? { ...base, headers: () => base.headers(apiKey) } : base;
+    },
+
+    /**
+     * Filter tools based on permission grants
+     *
+     * @param {Array} tools - Tool definitions to filter
+     * @param {Object} [options]
+     * @param {Object} [options.permissions] - Permission grants: { scope: true/false }
+     * @returns {Array} Filtered tools
+     */
+    filterTools(tools, { permissions = {} } = {}) {
+      return tools.filter(tool => {
+        if (!tool.requiresPermission) return true;
+        return permissions[tool.requiresPermission] === true;
+      });
     },
 
     /**
