@@ -1,3 +1,7 @@
+0.36
+
+  Add directReturn to core weather tool
+
 0.35
 
   Add directReturn support to skip second LLM call for simple tools

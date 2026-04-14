@@ -1,6 +1,6 @@
 {
   "name": "@stevederico/dotbot",
-  "version": "0.35.0",
+  "version": "0.36.0",
   "description": "AI agent CLI and library for Node.js — streaming, multi-provider, tool execution, autonomous tasks",
   "type": "module",
   "main": "index.js",
