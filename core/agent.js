@@ -475,6 +475,27 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
         }
       }
 
+      // directReturn: skip the second LLM call when all tools have directReturn: true
+      // and all succeeded. Yield the combined results as text and exit the loop.
+      const allDirectReturn = assistantMsg.toolCalls.every(tc => {
+        const t = tools.find(tool => tool.name === tc.name);
+        return t?.directReturn && tc.status === 'done';
+      });
+
+      if (allDirectReturn) {
+        const combinedResult = assistantMsg.toolCalls
+          .map(tc => tc.result)
+          .join('\n');
+        const textEvent = { type: "text_delta", text: combinedResult };
+        validateEvent(textEvent);
+        yield textEvent;
+        messages.push({ role: "assistant", content: combinedResult, _ts: Date.now() });
+        const doneEvent = { type: "done", content: combinedResult };
+        validateEvent(doneEvent);
+        yield doneEvent;
+        return;
+      }
+
       toolCalls = [];
       fullContent = "";
     } else {
