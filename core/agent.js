@@ -180,7 +180,8 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
       const reqBody = JSON.parse(body);
       const inputChars = JSON.stringify(reqBody.messages).length;
       const toolCount = reqBody.tools?.length || 0;
-      console.log(`[dotbot] LLM request: ${reqBody.messages.length} msgs, ${toolCount} tools, ~${Math.round(inputChars/4)} tok (${inputChars} chars)`);
+      const totalBodyChars = body.length;
+      process.stderr.write(`[dotbot] LLM req: ${reqBody.messages.length} msgs, ${toolCount} tools, ~${Math.round(inputChars/4)} tok msgs + ~${Math.round((totalBodyChars - inputChars)/4)} tok tools = ~${Math.round(totalBodyChars/4)} tok total\n`);
       response = await fetch(url, { method: "POST", headers, body, signal });
       if (!response.ok) {
         const errorEvent = { type: "error", error: `${provider.name} returned ${response.status}: ${await response.text()}` };
