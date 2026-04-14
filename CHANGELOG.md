@@ -1,3 +1,7 @@
+0.33
+
+  Enable native tool calling for local provider
+
 0.32
 
   Rename mlx_local provider to local
