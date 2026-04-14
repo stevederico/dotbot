@@ -29,7 +29,8 @@ function weatherCodeToText(code) {
 export const weatherTools = [
   {
     name: "weather_get",
-    description: "Get the current weather for a location.",
+    description: "Get weather for a city.",
+    directReturn: true,
     parameters: {
       type: "object",
       properties: {
