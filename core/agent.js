@@ -177,6 +177,10 @@ export async function* agentLoop({ model, messages, tools, signal, provider, con
     // Local providers (ollama, local): direct fetch, no failover
     if (provider.local) {
       const { url, headers, body } = buildAgentRequest(provider);
+      const reqBody = JSON.parse(body);
+      const inputChars = JSON.stringify(reqBody.messages).length;
+      const toolCount = reqBody.tools?.length || 0;
+      console.log(`[dotbot] LLM request: ${reqBody.messages.length} msgs, ${toolCount} tools, ~${Math.round(inputChars/4)} tok (${inputChars} chars)`);
       response = await fetch(url, { method: "POST", headers, body, signal });
       if (!response.ok) {
         const errorEvent = { type: "error", error: `${provider.name} returned ${response.status}: ${await response.text()}` };

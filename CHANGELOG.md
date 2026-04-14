@@ -1,3 +1,7 @@
+0.37
+
+  Log LLM request size (messages, tools, estimated tokens)
+
 0.36
 
   Add directReturn to core weather tool
