@@ -1,5 +1,6 @@
-0.33
+0.34
 
+  Suppress Gemma native tool call markers in stream
   Enable native tool calling for local provider
 
 0.32

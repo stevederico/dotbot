@@ -563,12 +563,17 @@ async function* parseOpenAIStream(response, fullContent, toolCalls, signal, prov
           yield thinkingEvent;
         }
 
-        // Text content
+        // Text content — suppress native tool call markers (e.g. Gemma's
+        // <|tool_call>...<tool_call|> format) since we parse the structured
+        // tool_calls from the same chunk instead.
         if (delta.content) {
-          fullContent += delta.content;
-          const textEvent = { type: "text_delta", text: delta.content };
-          validateEvent(textEvent);
-          yield textEvent;
+          const isToolMarker = delta.content.includes('<|tool_call>') || delta.content.includes('<tool_call|>');
+          if (!isToolMarker) {
+            fullContent += delta.content;
+            const textEvent = { type: "text_delta", text: delta.content };
+            validateEvent(textEvent);
+            yield textEvent;
+          }
         }
 
         // Tool calls — assembled incrementally by index
