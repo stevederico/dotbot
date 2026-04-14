@@ -144,6 +144,7 @@ export const AI_PROVIDERS = {
     defaultModel: '',
     models: [],
     local: true,
+    supportsToolRole: true,
     headers: () => ({
       'Content-Type': 'application/json'
     }),
