@@ -1,3 +1,7 @@
+0.35
+
+  Add directReturn support to skip second LLM call for simple tools
+
 0.34
 
   Suppress Gemma native tool call markers in stream
