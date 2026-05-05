@@ -122,11 +122,18 @@ class BrowserSessionManager {
     const cdp = new CDPClient(targetWsUrl);
     await cdp.connect();
 
-    // Set viewport and user agent
-    await cdp.setViewport(1280, 720);
-    await cdp.send('Network.setUserAgentOverride', {
-      userAgent: 'DotBot/1.0 (Headless Browser)'
-    });
+    // When the caller pointed us at a real installed browser (headed) keep its
+    // native window size + native user agent — overriding either makes the
+    // window letterbox into a 1280x720 box and tags every request as a bot.
+    // For the bundled chrome-headless-shell fallback we still set both for
+    // screenshot consistency.
+    const headed = !!process.env.DOTBOT_CHROME_PATH;
+    if (!headed) {
+      await cdp.setViewport(1280, 720);
+      await cdp.send('Network.setUserAgentOverride', {
+        userAgent: 'DotBot/1.0 (Headless Browser)'
+      });
+    }
 
     const idleTimer = setTimeout(() => this.closeContext(userID), IDLE_TIMEOUT_MS);
     this.contexts.set(userID, { cdp, targetWsUrl, lastUsed: Date.now(), idleTimer });
