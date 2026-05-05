@@ -1,3 +1,11 @@
+0.39
+
+  Browser launcher reads DOTBOT_CHROME_PATH env var
+  Browser launcher reads DOTBOT_BROWSER_PORT env var
+  Browser launcher reads DOTBOT_BROWSER_USER_DATA_DIR env var
+  Run installed browser headed when chromePath is real Chromium
+  Use PUT /json/new (Chromium >=92 deprecated GET)
+
 0.38
 
   Add chatRaw method
