@@ -1,3 +1,9 @@
+0.39.1
+
+  Skip setViewport(1280,720) when DOTBOT_CHROME_PATH set
+  Skip "DotBot/1.0 (Headless Browser)" UA override when headed
+  Headed window now uses native size and real Chromium UA
+
 0.39
 
   Browser launcher reads DOTBOT_CHROME_PATH env var
