@@ -137,31 +137,58 @@ async function findFreePort() {
 
 /**
  * Launch Chrome with remote debugging enabled.
+ *
+ * Options can be overridden by env vars (lower precedence than explicit options):
+ *   DOTBOT_CHROME_PATH         path to a Chromium-family binary (Chrome, Brave, Edge, Arc)
+ *   DOTBOT_BROWSER_PORT        remote debugging port
+ *   DOTBOT_BROWSER_USER_DATA_DIR  persistent user-data dir (preserves cookies/logins)
+ *
+ * When DOTBOT_CHROME_PATH is set the process launches headed (no headless flags) so
+ * the user can see and interact with the window — required for first-time login flows
+ * on sites the agent will later automate.
+ *
  * @param {Object} options - Launch options
- * @param {number} options.port - Debugging port (auto-assigned if not specified)
- * @param {string} options.userDataDir - User data directory for isolation
- * @returns {Promise<{process: ChildProcess, port: number, wsUrl: string}>}
+ * @param {string} [options.chromePath] - Override Chromium binary path
+ * @param {number} [options.port] - Debugging port (auto-assigned if not specified)
+ * @param {string} [options.userDataDir] - User data directory
+ * @returns {Promise<{process: ChildProcess, port: number, wsUrl: string, userDataDir: string}>}
  */
 export async function launchBrowser(options = {}) {
-  const chromePath = await ensureBrowser();
-  const port = options.port || await findFreePort();
-  const userDataDir = options.userDataDir || `/tmp/dotbot-browser-${Date.now()}`;
+  const envChromePath = process.env.DOTBOT_CHROME_PATH;
+  const chromePath = options.chromePath
+    || (envChromePath && existsSync(envChromePath) ? envChromePath : await ensureBrowser());
+  const port = options.port
+    || (process.env.DOTBOT_BROWSER_PORT ? Number(process.env.DOTBOT_BROWSER_PORT) : await findFreePort());
+  const userDataDir = options.userDataDir
+    || process.env.DOTBOT_BROWSER_USER_DATA_DIR
+    || `/tmp/dotbot-browser-${Date.now()}`;
 
   mkdirSync(userDataDir, { recursive: true });
 
-  const args = [
-    `--remote-debugging-port=${port}`,
-    `--user-data-dir=${userDataDir}`,
-    '--disable-gpu',
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
-    '--disable-extensions',
-    '--disable-background-networking',
-    '--disable-sync',
-    '--no-first-run',
-    '--disable-default-apps'
-  ];
+  // When the caller points us at a real installed browser we run headed (cookies,
+  // logins, visible window). The bundled chrome-headless-shell binary is headless
+  // by design and ignores these flags.
+  const headed = !chromePath.includes('chrome-headless-shell');
+  const args = headed
+    ? [
+        `--remote-debugging-port=${port}`,
+        `--user-data-dir=${userDataDir}`,
+        '--no-first-run',
+        '--no-default-browser-check'
+      ]
+    : [
+        `--remote-debugging-port=${port}`,
+        `--user-data-dir=${userDataDir}`,
+        '--disable-gpu',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-sync',
+        '--no-first-run',
+        '--disable-default-apps'
+      ];
 
   const proc = spawn(chromePath, args, {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -211,14 +238,17 @@ async function waitForDevTools(port, timeout = 10000) {
  * @returns {Promise<string>} Target WebSocket URL for the new context
  */
 export async function createBrowserContext(wsUrl) {
-  // Connect to browser endpoint to create new target
+  // Connect to browser endpoint to create new target.
+  // Chromium >=92 requires PUT here (was GET before — CSRF mitigation), so try
+  // PUT first and fall back to GET for older builds / chrome-headless-shell.
   const port = new URL(wsUrl).port;
-  const response = await fetch(`http://127.0.0.1:${port}/json/new`);
-
+  let response = await fetch(`http://127.0.0.1:${port}/json/new`, { method: 'PUT' });
+  if (!response.ok) {
+    response = await fetch(`http://127.0.0.1:${port}/json/new`);
+  }
   if (!response.ok) {
     throw new Error('Failed to create browser context');
   }
-
   const target = await response.json();
   return target.webSocketDebuggerUrl;
 }
