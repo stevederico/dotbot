@@ -1,3 +1,7 @@
+0.39.2
+
+  Polish browser comment
+
 0.39.1
 
   Skip setViewport(1280,720) when DOTBOT_CHROME_PATH set

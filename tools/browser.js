@@ -123,7 +123,7 @@ class BrowserSessionManager {
     await cdp.connect();
 
     // When the caller pointed us at a real installed browser (headed) keep its
-    // native window size + native user agent — overriding either makes the
+    // native window size and native user agent — overriding either makes the
     // window letterbox into a 1280x720 box and tags every request as a bot.
     // For the bundled chrome-headless-shell fallback we still set both for
     // screenshot consistency.
