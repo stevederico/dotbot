@@ -1,3 +1,9 @@
 
 # SQLite databases
 *.db
+
+# Build output
+dist/
+
+# Dependencies
+node_modules/

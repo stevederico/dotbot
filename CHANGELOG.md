@@ -1,3 +1,12 @@
+0.40
+
+  Convert entire library to strict TypeScript (NodeNext ESM)
+  Compile to dist/ via tsc, ship .js + .d.ts declarations
+  Add shared types.ts (Message, AgentEvent, ToolDefinition, Provider, stores)
+  package.json main/types/bin/exports now point at dist/
+  No runtime dependencies added (typescript + @types/node are devDeps)
+  Fix CLI version read for two-level dist/bin/ depth
+
 0.39.2
 
   Polish browser comment
