@@ -1,4 +1,4 @@
-0.40
+0.40.0
 
   Convert entire library to strict TypeScript (NodeNext ESM)
   Compile to dist/ via tsc, ship .js + .d.ts declarations
