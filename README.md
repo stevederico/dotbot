@@ -364,6 +364,7 @@ await agent.chat({
 
 | Technology | Purpose |
 |------------|---------|
+| **TypeScript** | Strict, NodeNext ESM; compiled to `dist/` (zero runtime deps) |
 | **Node.js 22.5+** | Runtime with built-in SQLite |
 | **Chrome DevTools Protocol** | Browser automation (zero deps) |
 | **SQLite** | Default storage (zero deps) |
@@ -374,31 +375,33 @@ await agent.chat({
 
 ```
 dotbot/
+├── types.ts                # Shared types (Message, AgentEvent, ToolDefinition, Provider)
 ├── bin/
-│   └── dotbot.js           # CLI entry point (REPL, server, sandbox mode)
+│   └── dotbot.ts           # CLI entry point (REPL, server, sandbox mode)
 ├── core/
-│   ├── agent.js            # Streaming agent loop
-│   ├── events.js           # SSE event schemas
-│   ├── compaction.js       # Context window management
-│   ├── normalize.js        # Message format conversion
-│   ├── failover.js         # Cross-provider failover
-│   ├── cron_handler.js     # Scheduled job execution
-│   └── trigger_handler.js  # Event-driven triggers
+│   ├── agent.ts            # Streaming agent loop
+│   ├── events.ts           # SSE event schemas
+│   ├── compaction.ts       # Context window management
+│   ├── normalize.ts        # Message format conversion
+│   ├── failover.ts         # Cross-provider failover
+│   ├── cron_handler.ts     # Scheduled job execution
+│   └── trigger_handler.ts  # Event-driven triggers
 ├── storage/
-│   ├── SessionStore.js     # Session interface
-│   ├── TaskStore.js        # Task interface
-│   ├── CronStore.js        # Job scheduling interface
-│   ├── TriggerStore.js     # Trigger interface
-│   └── SQLite*.js          # SQLite adapters
+│   ├── SessionStore.ts     # Session interface
+│   ├── TaskStore.ts        # Task interface
+│   ├── CronStore.ts        # Job scheduling interface
+│   ├── TriggerStore.ts     # Trigger interface
+│   └── SQLite*.ts          # SQLite adapters
 ├── tools/                  # 53 built-in tools
-│   ├── memory.js
-│   ├── web.js
-│   ├── browser.js
-│   ├── tasks.js
-│   ├── jobs.js
+│   ├── memory.ts
+│   ├── web.ts
+│   ├── browser.ts
+│   ├── tasks.ts
+│   ├── jobs.ts
 │   └── ...
-└── utils/
-    └── providers.js        # AI provider configs
+├── utils/
+│   └── providers.ts        # AI provider configs
+└── dist/                   # Compiled output (tsc): .js + .d.ts, published artifact
 ```
 
 <br />
@@ -415,7 +418,10 @@ dotbot/
 ```bash
 git clone https://github.com/stevederico/dotbot
 cd dotbot
-node bin/dotbot.js --help
+npm install
+npm run build              # compile TypeScript to dist/
+npm test                   # typecheck + run tests
+node dist/bin/dotbot.js --help
 ```
 
 <br />
