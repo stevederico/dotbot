@@ -1,22 +1,51 @@
 {
   "name": "@stevederico/dotbot",
-  "version": "0.39.2",
+  "version": "0.40.0",
   "description": "AI agent CLI and library for Node.js — streaming, multi-provider, tool execution, autonomous tasks",
   "type": "module",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
-    "dotbot": "./bin/dotbot.js"
+    "dotbot": "./dist/bin/dotbot.js"
   },
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc && node --test dist/test/*.test.js",
+    "prepublishOnly": "npm run build"
   },
   "exports": {
-    ".": "./index.js",
-    "./core/*": "./core/*.js",
-    "./tools/*": "./tools/*.js",
-    "./storage/*": "./storage/*.js",
-    "./utils/*": "./utils/*.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./core/*": {
+      "types": "./dist/core/*.d.ts",
+      "default": "./dist/core/*.js"
+    },
+    "./tools/*": {
+      "types": "./dist/tools/*.d.ts",
+      "default": "./dist/tools/*.js"
+    },
+    "./storage/*": {
+      "types": "./dist/storage/*.d.ts",
+      "default": "./dist/storage/*.js"
+    },
+    "./utils/*": {
+      "types": "./dist/utils/*.d.ts",
+      "default": "./dist/utils/*.js"
+    }
   },
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.d.ts.map",
+    "dist/core",
+    "dist/storage",
+    "dist/tools",
+    "dist/utils",
+    "dist/bin"
+  ],
   "keywords": [
     "ai",
     "agent",
@@ -34,8 +63,10 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "dependencies": {},
-  "devDependencies": {},
+  "devDependencies": {
+    "@types/node": "22.19.20",
+    "typescript": "6.0.3"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/stevederico/dotbot.git"
