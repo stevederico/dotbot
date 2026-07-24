@@ -306,6 +306,44 @@ function toJsonValue(value: unknown): JsonValue {
 }
 
 /**
+ * Tokens attributed to one image_url content part in the debug estimate.
+ * Gemma-class mmproj encoders emit a fixed ~256-token budget per image
+ * regardless of the base64 payload size — an approximation, but within 2-3x
+ * of reality where chars/4 over the base64 bytes was off by ~40x.
+ */
+const IMAGE_PART_TOKENS = 256;
+
+/**
+ * Rough token estimate for a request's messages array, for the debug log line.
+ * chars/4 works for text, but a base64 data-URI image part is NOT text — the
+ * vision encoder turns the whole image into a fixed token budget, so counting
+ * ~100 KB of base64 at chars/4 inflated the log ~40x on vision turns
+ * (~86k logged for a real ~2.3k-token request). Image parts count flat;
+ * everything else counts chars/4.
+ */
+export function estimateMessageTokens(messages: unknown[]): number {
+  let chars = 0;
+  let images = 0;
+  for (const message of messages) {
+    if (typeof message !== 'object' || message === null) {
+      chars += JSON.stringify(message)?.length ?? 0;
+      continue;
+    }
+    const content: unknown = Reflect.get(message, 'content');
+    if (Array.isArray(content)) {
+      for (const part of content) {
+        const type: unknown = typeof part === 'object' && part !== null ? Reflect.get(part, 'type') : null;
+        if (type === 'image_url') images += 1;
+        else chars += JSON.stringify(part)?.length ?? 0;
+      }
+    } else {
+      chars += JSON.stringify(message)?.length ?? 0;
+    }
+  }
+  return Math.round(chars / 4) + images * IMAGE_PART_TOKENS;
+}
+
+/**
  * Run the agent loop. Yields events for streaming to the frontend.
  *
  * Events yielded:
@@ -488,7 +526,9 @@ export async function* agentLoop(
       const inputChars = JSON.stringify(reqMessages).length;
       const toolCount = Array.isArray(reqBody.tools) ? reqBody.tools.length : 0;
       const totalBodyChars = body.length;
-      process.stderr.write(`[dotbot] LLM req: ${reqMessages.length} msgs, ${toolCount} tools, ~${Math.round(inputChars/4)} tok msgs + ~${Math.round((totalBodyChars - inputChars)/4)} tok tools = ~${Math.round(totalBodyChars/4)} tok total\n`);
+      const msgTokens = estimateMessageTokens(reqMessages);
+      const toolTokens = Math.round((totalBodyChars - inputChars) / 4);
+      process.stderr.write(`[dotbot] LLM req: ${reqMessages.length} msgs, ${toolCount} tools, ~${msgTokens} tok msgs + ~${toolTokens} tok tools = ~${msgTokens + toolTokens} tok total\n`);
       response = await fetch(url, { method: "POST", headers, body, signal });
       if (!response.ok) {
         const errorEvent: ErrorEvent = { type: "error", error: `${resolvedProvider.name} returned ${response.status}: ${await response.text()}` };
