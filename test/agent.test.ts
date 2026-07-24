@@ -2,7 +2,7 @@ import { test, describe, afterEach } from 'node:test';
 import assert from 'node:assert';
 import { ReadableStream } from 'node:stream/web';
 import { TextEncoder } from 'node:util';
-import { agentLoop } from '../core/agent.js';
+import { agentLoop, estimateMessageTokens } from '../core/agent.js';
 import type { AgentEvent, Provider } from '../types.js';
 
 /** A single OpenAI-style streaming delta in the mocked SSE body. */
@@ -206,5 +206,39 @@ describe('agentLoop — local short plain-text response flush', () => {
     assert.strictEqual(fullResponse, 'Hello!');
     assert.ok(textDeltaCount > 0, 'expected at least one text_delta');
     assert.strictEqual(sawDone, true);
+  });
+});
+
+describe('estimateMessageTokens', () => {
+  test('counts plain text messages at chars/4', () => {
+    const messages = [{ role: 'user', content: 'x'.repeat(400) }];
+    const estimate = estimateMessageTokens(messages);
+    // JSON overhead (role/content keys, quotes) rides along with the 400 chars.
+    assert.ok(estimate >= 100 && estimate < 120, `got ${estimate}`);
+  });
+
+  test('counts an image_url part flat instead of chars/4 over its base64', () => {
+    const base64 = 'A'.repeat(120_000); // ~90 KB image → ~30k tok under chars/4
+    const messages = [{
+      role: 'user',
+      content: [
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+        { type: 'text', text: 'what is on my screen?' },
+      ],
+    }];
+    const estimate = estimateMessageTokens(messages);
+    assert.ok(estimate < 300, `image should count flat, got ${estimate}`);
+    assert.ok(estimate >= 256, `flat image cost missing, got ${estimate}`);
+  });
+
+  test('two images cost twice the flat budget', () => {
+    const part = { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${'B'.repeat(50_000)}` } };
+    const one = estimateMessageTokens([{ role: 'user', content: [part] }]);
+    const two = estimateMessageTokens([{ role: 'user', content: [part, part] }]);
+    assert.strictEqual(two - one, 256);
+  });
+
+  test('tolerates malformed entries without throwing', () => {
+    assert.ok(estimateMessageTokens([null, 'plain', { role: 'user', content: [null, 42] }]) >= 0);
   });
 });

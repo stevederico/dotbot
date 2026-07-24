@@ -1,3 +1,9 @@
+0.41.0
+
+  Fix token-estimate log counting base64 image bytes as text
+  Add estimateMessageTokens (flat 256 tok per image_url part)
+  Add 4 estimator unit tests
+
 0.40.0
 
   Convert entire library to strict TypeScript (NodeNext ESM)
