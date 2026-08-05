@@ -543,8 +543,10 @@ export async function* agentLoop(
         activeProvider = result.activeProvider;
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
+        // FailoverError.message already includes body hints (e.g. free credit used).
+        // Do not rebuild from status-only — that dropped Pro paywall strings.
         const msg = err instanceof FailoverError
-          ? `All providers failed: ${err.attempts.map(a => `${a.provider}(${a.status})`).join(', ')}`
+          ? err.message
           : (err instanceof Error ? err.message : String(err));
         const errorEvent: ErrorEvent = { type: "error", error: msg };
         validateEvent(errorEvent);
