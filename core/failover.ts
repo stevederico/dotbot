@@ -51,6 +51,51 @@ const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 const cooldownMap = new Map<string, number>();
 
 /**
+ * Extract a short, PII-safe error hint from a provider error body.
+ * Prefers JSON `error` / `error.message` / `message` strings (e.g. Pro relay
+ * `{ "error": "free credit used" }`) so callers can open paywalls / bucket
+ * telemetry. Truncates; never returns raw conversation content fields.
+ */
+function extractErrorHint(body: string): string {
+  if (!body || typeof body !== 'string') return '';
+  const trimmed = body.trim();
+  if (!trimmed) return '';
+  try {
+    const j = JSON.parse(trimmed) as Record<string, unknown>;
+    if (typeof j.error === 'string' && j.error.trim()) {
+      return j.error.trim().slice(0, 80);
+    }
+    if (j.error && typeof j.error === 'object') {
+      const nested = (j.error as Record<string, unknown>).message;
+      if (typeof nested === 'string' && nested.trim()) {
+        return nested.trim().slice(0, 80);
+      }
+    }
+    if (typeof j.message === 'string' && j.message.trim()) {
+      return j.message.trim().slice(0, 80);
+    }
+  } catch {
+    // not JSON — fall through to a bounded plain-text snippet
+  }
+  return trimmed.replace(/\s+/g, ' ').slice(0, 80);
+}
+
+/**
+ * One attempt for FailoverError / agent messages:
+ * `dottiepro(429): free credit used` or `xai(502)` when body empty.
+ */
+function formatFailoverAttempt(a: FailoverAttempt): string {
+  const hint = extractErrorHint(a.body || '');
+  return hint ? `${a.provider}(${a.status}): ${hint}` : `${a.provider}(${a.status})`;
+}
+
+/** Full user/agent-facing summary when every provider failed. */
+function formatFailoverMessage(attempts: FailoverAttempt[]): string {
+  if (!attempts.length) return 'All providers failed';
+  return `All providers failed: ${attempts.map(formatFailoverAttempt).join(', ')}`;
+}
+
+/**
  * Custom error thrown when all providers (primary + fallbacks) are exhausted.
  * @extends Error
  */
@@ -218,7 +263,13 @@ async function fetchWithFailover(
     }
   }
 
-  throw new FailoverError('All providers exhausted', attempts);
+  throw new FailoverError(formatFailoverMessage(attempts), attempts);
 }
 
-export { fetchWithFailover, FailoverError };
+export {
+  fetchWithFailover,
+  FailoverError,
+  extractErrorHint,
+  formatFailoverAttempt,
+  formatFailoverMessage,
+};

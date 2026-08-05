@@ -1,3 +1,10 @@
+0.41.1
+
+  FailoverError message includes provider body hints (e.g. free credit used)
+  agentLoop uses FailoverError.message as-is (no status-only rebuild)
+  Export extractErrorHint / formatFailoverAttempt / formatFailoverMessage
+  6 unit tests for free-credit and empty-body shapes
+
 0.41.0
 
   Fix token-estimate log counting base64 image bytes as text
