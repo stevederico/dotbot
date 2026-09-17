@@ -550,26 +550,26 @@ async function fetchProviderModels(providerId: string, apiKey?: string): Promise
  * Tools always allowed in sandbox mode (safe, internal-only).
  */
 const SANDBOX_ALLOWED_TOOLS = new Set([
-  'memory_save', 'memory_search', 'memory_delete', 'memory_list', 'memory_read', 'memory_update',
-  'web_search', 'grokipedia_search',
-  'file_read', 'file_list',
-  'run_code',
-  'weather_get',
-  'event_query', 'events_summary',
-  'task_create', 'task_list', 'task_plan', 'task_work', 'task_step_done', 'task_complete',
-  'task_delete', 'task_search', 'task_stats',
-  'trigger_create', 'trigger_list', 'trigger_toggle', 'trigger_delete',
-  'schedule_job', 'list_jobs', 'toggle_job', 'cancel_job',
+  'dot_memory_save', 'dot_memory_search', 'dot_memory_delete', 'dot_memory_list', 'dot_memory_read', 'dot_memory_update',
+  'dot_web_search', 'dot_grokipedia_search',
+  'dot_file_read', 'dot_file_list',
+  'dot_run_code',
+  'dot_weather_get',
+  'dot_event_query', 'dot_events_summary',
+  'dot_task_create', 'dot_task_list', 'dot_task_plan', 'dot_task_work', 'dot_task_step_done', 'dot_task_complete',
+  'dot_task_delete', 'dot_task_search', 'dot_task_stats',
+  'dot_trigger_create', 'dot_trigger_list', 'dot_trigger_toggle', 'dot_trigger_delete',
+  'dot_schedule_job', 'dot_list_jobs', 'dot_toggle_job', 'dot_cancel_job',
 ]);
 
 /** Tools that are allowed in sandbox but domain-gated via allowlist. */
-const SANDBOX_GATED_TOOLS = new Set(['web_fetch', 'browser_navigate']);
+const SANDBOX_GATED_TOOLS = new Set(['dot_web_fetch', 'dot_browser_navigate']);
 
 /** Tools unlocked in sandbox when their preset is in the --allow list. */
 const SANDBOX_PRESET_TOOLS: Record<string, string[]> = {
-  messages: ['message_list', 'message_send', 'message_delete', 'message_read'],
-  images: ['image_generate', 'image_list', 'image_search'],
-  notifications: ['notify_user'],
+  messages: ['dot_message_list', 'dot_message_send', 'dot_message_delete', 'dot_message_read'],
+  images: ['dot_image_generate', 'dot_image_list', 'dot_image_search'],
+  notifications: ['dot_notify_user'],
 };
 
 /**
@@ -658,11 +658,11 @@ function wrapWithDomainGate(tool: ToolDefinition, allowedDomains: Set<string>): 
  *
  * Mirrors NemoClaw's deny-by-default policy:
  * - No filesystem access (file_*)
- * - No code execution (run_code)
+ * - No code execution (dot_run_code)
  * - No outbound messaging (message_*)
  * - No image generation, notifications, or app scaffolding
- * - Network tools (web_fetch, browser_navigate) restricted to domain allowlist
- * - Curated search APIs (web_search, grokipedia_search) always allowed
+ * - Network tools (dot_web_fetch, dot_browser_navigate) restricted to domain allowlist
+ * - Curated search APIs (dot_web_search, dot_grokipedia_search) always allowed
  *
  * @param {boolean} sandbox - Whether sandbox mode is active
  * @param {Array<string>} allowList - Domain presets or raw domains to allow

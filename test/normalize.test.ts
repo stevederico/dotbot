@@ -31,14 +31,14 @@ describe('toStandardFormat', () => {
       role: 'assistant',
       content: [
         { type: 'text', text: 'Let me search' },
-        { type: 'tool_use', id: 'tool1', name: 'web_search', input: { query: 'test' } }
+        { type: 'tool_use', id: 'tool1', name: 'dot_web_search', input: { query: 'test' } }
       ]
     }];
     const result = toStandardFormat(messages);
     assert.strictEqual(result[0]?.role, 'assistant');
     assert.strictEqual(result[0]?.content, 'Let me search');
     assert.ok(result[0]?.toolCalls);
-    assert.strictEqual(result[0]?.toolCalls?.[0]?.name, 'web_search');
+    assert.strictEqual(result[0]?.toolCalls?.[0]?.name, 'dot_web_search');
   });
 
   test('skips tool-result-only messages', () => {
@@ -71,7 +71,7 @@ describe('toProviderFormat', () => {
     const messages: Message[] = [{
       role: 'assistant',
       content: 'Searching...',
-      toolCalls: [{ id: 't1', name: 'web_search', input: { q: 'test' }, result: 'found', status: 'done' }]
+      toolCalls: [{ id: 't1', name: 'dot_web_search', input: { q: 'test' }, result: 'found', status: 'done' }]
     }];
     const result = toProviderFormat(messages, 'anthropic');
     assert.strictEqual(result[0]?.role, 'assistant');

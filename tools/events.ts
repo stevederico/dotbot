@@ -21,7 +21,7 @@ function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** Recognized groupBy values for events_summary. */
+/** Recognized groupBy values for dot_events_summary. */
 type SummaryGroupBy = NonNullable<EventSummaryParams["groupBy"]>;
 
 /** A period/count row used when grouping by day/week/month. */
@@ -53,7 +53,7 @@ function toPeriodCount(value: unknown): PeriodCount {
 
 export const eventTools: ToolDefinition[] = [
   {
-    name: "event_query",
+    name: "dot_event_query",
     description:
       "Query user activity events with filters. Returns recent events matching the criteria. " +
       "Use this to find specific events like messages sent, tool calls, goals created, etc.",
@@ -125,7 +125,7 @@ export const eventTools: ToolDefinition[] = [
   },
 
   {
-    name: "events_summary",
+    name: "dot_events_summary",
     description:
       "Get aggregated usage statistics and analytics. Shows counts by event type, " +
       "time period breakdowns, and tool usage patterns. Use this to answer questions " +
@@ -209,7 +209,7 @@ export const eventTools: ToolDefinition[] = [
   },
 ];
 
-/** Type guard for the events_summary groupBy enum values. */
+/** Type guard for the dot_events_summary groupBy enum values. */
 function isGroupBy(value: JsonValue | undefined): value is SummaryGroupBy {
   return value === "type" || value === "day" || value === "week" || value === "month";
 }

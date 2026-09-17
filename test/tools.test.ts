@@ -31,10 +31,10 @@ describe('coreTools', () => {
 
   test('contains expected core tools', () => {
     const names = coreTools.map(t => t.name);
-    assert.ok(names.includes('memory_save'), 'Missing memory_save');
-    assert.ok(names.includes('web_search'), 'Missing web_search');
-    assert.ok(names.includes('file_read'), 'Missing file_read');
-    assert.ok(names.includes('weather_get'), 'Missing weather_get');
+    assert.ok(names.includes('dot_memory_save'), 'Missing dot_memory_save');
+    assert.ok(names.includes('dot_web_search'), 'Missing dot_web_search');
+    assert.ok(names.includes('dot_file_read'), 'Missing dot_file_read');
+    assert.ok(names.includes('dot_weather_get'), 'Missing dot_weather_get');
   });
 
   test('has at least 40 tools', () => {

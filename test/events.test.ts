@@ -30,7 +30,7 @@ describe('validateEvent', () => {
   });
 
   test('validates tool_start event', () => {
-    assert.ok(validateEvent({ type: 'tool_start', name: 'web_search', input: { query: 'test' } }));
+    assert.ok(validateEvent({ type: 'tool_start', name: 'dot_web_search', input: { query: 'test' } }));
     assert.throws(
       () => validateEvent({ type: 'tool_start', name: 'test' }),
       /must have input object/
@@ -40,7 +40,7 @@ describe('validateEvent', () => {
   test('validates tool_result event', () => {
     assert.ok(validateEvent({
       type: 'tool_result',
-      name: 'web_search',
+      name: 'dot_web_search',
       input: { query: 'test' },
       result: 'found it'
     }));
