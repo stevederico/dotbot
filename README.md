@@ -32,6 +32,7 @@ A **streaming AI agent** with tool execution, autonomous tasks, and scheduled jo
 ```bash
 dotbot "What's the weather in San Francisco?"
 dotbot                  # Interactive mode
+dotbot tui              # Full-screen TUI
 dotbot --sandbox        # Sandbox mode (restricted tools)
 dotbot serve --port 3000
 dotbot models           # List available models
@@ -61,6 +62,9 @@ dotbot "Summarize the top 3 AI news stories today"
 
 # Interactive mode
 dotbot
+
+# Full-screen TUI
+dotbot tui
 
 # Start HTTP server
 dotbot serve --port 3000
@@ -197,6 +201,7 @@ dotbot — AI agent CLI
 Usage:
   dotbot "message"            One-shot query
   dotbot                      Interactive chat
+  dotbot tui                  Full-screen TUI chat
   dotbot serve [--port N]     Start HTTP server (default: 3000)
   dotbot serve --openai       Start OpenAI-compatible API server
   echo "msg" | dotbot         Pipe input from stdin

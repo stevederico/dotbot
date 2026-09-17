@@ -45,6 +45,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 
 import type { Provider, ToolDefinition, AgentEvent, AgentContext, Session, Message, JsonObject } from '../types.js';
+import { runTui } from './tui.js';
 
 // Read version from package.json
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -216,11 +217,13 @@ dotbot v${VERSION} — AI agent CLI
 Usage:
   dotbot "message"            One-shot query
   dotbot                      Interactive chat
+  dotbot tui                  Full-screen TUI chat
   dotbot serve [--port N]     Start HTTP server (default: ${DEFAULT_PORT})
   dotbot serve --openai       Start OpenAI-compatible API server
   echo "msg" | dotbot         Pipe input from stdin
 
 Commands:
+  tui                         Full-screen terminal UI (alt-screen)
   models                      List available models from provider
   doctor                      Check environment and configuration
   tools                       List all available tools
@@ -1058,6 +1061,51 @@ async function runRepl(options: CliOptions): Promise<void> {
 }
 
 /**
+ * Full-screen TUI chat (alt-screen, zero deps).
+ */
+async function runTuiCommand(options: CliOptions): Promise<void> {
+  const storesObj = await initStores(options.db, options.verbose, options.system);
+  const provider = await getProviderConfig(options.provider);
+  const providers = requireProviders();
+  const loop = requireAgentLoop();
+
+  let session: Session;
+  let initialMessages: Message[] = [];
+
+  if (options.session) {
+    const existing = await storesObj.sessionStore.getSession(options.session, 'cli-user');
+    if (!existing) {
+      console.error(`Error: Session not found: ${options.session}`);
+      process.exit(1);
+    }
+    session = existing;
+    initialMessages = [...(session.messages || [])];
+  } else {
+    session = await storesObj.sessionStore.createSession('cli-user', options.model, options.provider);
+  }
+
+  const context: AgentContext = {
+    userID: 'cli-user',
+    sessionId: session.id,
+    providers: { [options.provider]: { apiKey: process.env[providers[options.provider]?.envKey ?? ''] } },
+    ...storesObj,
+  };
+
+  await runTui({
+    version: VERSION,
+    providerId: options.provider,
+    model: options.model,
+    sandbox: options.sandbox,
+    sessionId: typeof session.id === 'string' ? session.id : String(session.id),
+    provider,
+    tools: getActiveTools(options.sandbox, options.sandboxAllow),
+    context,
+    agentLoop: loop,
+    initialMessages,
+  });
+}
+
+/**
  * Run HTTP server.
  *
  * @param {Object} options - CLI options
@@ -1756,6 +1804,9 @@ async function main(): Promise<void> {
   }
 
   switch (command) {
+    case 'tui':
+      await runTuiCommand(args);
+      break;
     case 'models':
       await runModels(args);
       break;
