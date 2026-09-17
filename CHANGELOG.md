@@ -1,3 +1,9 @@
+0.43.1
+
+  Refresh README for TUI and surfaces
+  Fix sandbox tool names and CDP note
+  Link dottie-local related project
+
 0.43.0
 
   Add zero-dep full-screen TUI

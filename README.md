@@ -2,8 +2,8 @@
   <img src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExaGNjeWoweGx4bGYxZXNvYmtsYW80MjlxODFmeTN0cHE3cHN6emFoNiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gYWeVOiMmbg3kzCTq5/giphy.gif" alt="dotbot" width="200">
   <h1 align="center" style="border-bottom: none; margin-bottom: 0;">dotbot</h1>
   <h3 align="center" style="margin-top: 0; font-weight: normal;">
-    The ultra-lean AI agent.<br>
-    11k lines. 53 tools. 0 dependencies.
+    The ultra-lean AI agent harness.<br>
+    ~11k lines. 53 tools. 0 dependencies.
   </h3>
 </div>
 
@@ -26,20 +26,27 @@ Everything you need for AI agents. Nothing you don't. No bloated abstractions. N
 
 ## What is dotbot?
 
-A **streaming AI agent** with tool execution, autonomous tasks, and scheduled jobs. Use it as a CLI or as a library.
+A **streaming AI agent harness** — tool loop, memory, jobs, sandbox — not an inference engine. The model lives elsewhere (xAI, Anthropic, OpenAI, Ollama, or a local OpenAI-compatible server such as [dottie-local](https://github.com/stevederico/dottie-local) / llama.cpp).
 
-**As a CLI:**
+**Surfaces:**
+
+| Surface | Command |
+|---------|---------|
+| One-shot / REPL | `dotbot "…"`, `dotbot` |
+| Full-screen TUI | `dotbot tui` |
+| HTTP | `dotbot serve` (+ `--openai`) |
+| Library | `import { createAgent } from '@stevederico/dotbot'` |
+
 ```bash
 dotbot "What's the weather in San Francisco?"
-dotbot                  # Interactive mode
-dotbot tui              # Full-screen TUI
-dotbot --sandbox        # Sandbox mode (restricted tools)
+dotbot                  # Interactive REPL
+dotbot tui              # Full-screen TUI (alt-screen, zero deps)
+dotbot --sandbox        # Restricted tools
 dotbot serve --port 3000
-dotbot models           # List available models
-dotbot tools            # List all 53 tools
+dotbot models
+dotbot tools
 ```
 
-**As a library:**
 ```javascript
 import { createAgent, SQLiteSessionStore, coreTools } from '@stevederico/dotbot';
 ```
@@ -48,77 +55,83 @@ import { createAgent, SQLiteSessionStore, coreTools } from '@stevederico/dotbot'
 
 ## Quick Start
 
-### CLI Usage
+### CLI
 
 ```bash
-# Install globally
 npm install -g @stevederico/dotbot
 
-# Set your API key
 export XAI_API_KEY=xai-...
 
-# Chat
 dotbot "Summarize the top 3 AI news stories today"
-
-# Interactive mode
 dotbot
-
-# Full-screen TUI
 dotbot tui
-
-# Start HTTP server
 dotbot serve --port 3000
-
-# Inspect data
 dotbot tools
 dotbot stats
 dotbot memory
 ```
 
-### Sandbox Mode
+### TUI
 
-Run dotbot with restricted tool access — deny-by-default.
+Zero-dependency full-screen chat (ANSI alt-screen + raw stdin). Same providers, tools, sandbox, and sessions as the CLI.
 
 ```bash
-# Full lockdown — safe tools only (memory, search, weather, tasks)
-dotbot --sandbox "What is 2+2?"
+dotbot tui
+dotbot tui -p local -m local          # local OpenAI-compatible server
+dotbot tui --sandbox --allow github
+dotbot tui --session <session-id>
+```
 
-# Allow specific domains for dot_web_fetch and dot_browser_navigate
+| Input | Action |
+|-------|--------|
+| Enter | Send message |
+| `/help` | Commands |
+| `/clear` | Clear conversation |
+| `/show` | Provider / model / session |
+| `/load <model>` | Switch model |
+| `/bye` | Quit |
+| PgUp / PgDn | Scroll history |
+| Ctrl+C | Quit |
+
+Requires a TTY (`dotbot tui` inside a real terminal).
+
+### Sandbox Mode
+
+Deny-by-default tool access.
+
+```bash
+dotbot --sandbox "What is 2+2?"
 dotbot --sandbox --allow github
 dotbot --sandbox --allow github --allow slack
-
-# Allow specific tool groups
 dotbot --sandbox --allow messages
 dotbot --sandbox --allow images
-
-# Mix domains and tool groups
 dotbot --sandbox --allow github --allow messages --allow npm
-
-# Custom domain
 dotbot --sandbox --allow api.mycompany.com
 
-# Persistent config in ~/.dotbotrc
+# ~/.dotbotrc
 # { "sandbox": true, "sandboxAllow": ["github", "slack", "messages"] }
 ```
 
-**What's blocked by default:**
+**Blocked by default:**
 
-| Category | Tools | How to unlock |
-|----------|-------|---------------|
+| Category | Tools | Unlock |
+|----------|-------|--------|
 | Filesystem writes | `dot_file_write`, `dot_file_delete`, `dot_file_move`, `dot_folder_create` | Cannot unlock |
 | Arbitrary HTTP | `dot_web_fetch` | `--allow <domain>` |
 | Browser | `dot_browser_navigate` | `--allow <domain>` |
 | Code execution | `dot_run_code` | Always allowed (Node.js permission model) |
-| Messaging | `message_*` | `--allow messages` |
-| Images | `image_*` | `--allow images` |
+| Messaging | `dot_message_*` | `--allow messages` |
+| Images | `dot_image_*` | `--allow images` |
 | Notifications | `dot_notify_user` | `--allow notifications` |
 | App generation | `dot_app_generate`, `dot_app_validate` | Cannot unlock |
 
-**What's always allowed:** `memory_*`, `dot_web_search`, `dot_grokipedia_search`, `dot_file_read`, `dot_file_list`, `dot_weather_get`, `event_*`, `task_*`, `trigger_*`, `dot_schedule_job`, `dot_list_jobs`, `dot_toggle_job`, `dot_cancel_job`
+**Always allowed:** `dot_memory_*`, `dot_web_search`, `dot_grokipedia_search`, `dot_file_read`, `dot_file_list`, `dot_weather_get`, `dot_event_*`, `dot_task_*`, `dot_trigger_*`, `dot_schedule_job`, `dot_list_jobs`, `dot_toggle_job`, `dot_cancel_job`
 
 **Domain presets:** `github`, `slack`, `discord`, `npm`, `pypi`, `jira`, `huggingface`, `docker`, `telegram`
 
-### Library Usage
+Tool names use a `dot_` prefix so they do not clash with provider built-ins (e.g. Grok's `web_search`).
+
+### Library
 
 ```bash
 npm install @stevederico/dotbot
@@ -154,42 +167,40 @@ for await (const event of agent.chat({
 
 ## What's Included
 
-### 🤖 **Streaming Agent Loop**
-- **Async generator** yields typed SSE events
-- **Multi-turn** conversations with tool execution
-- **Abort support** via AbortSignal
-- **Automatic retries** with provider failover
+### Streaming Agent Loop
+- Async generator yields typed events
+- Multi-turn tool execution
+- AbortSignal support
+- Provider failover
 
-### 🔧 **53 Built-in Tools**
-- **Memory** — save, search, update, delete long-term memory
-- **Web** — search, fetch, browser automation with Playwright
-- **Files** — read, write, list, delete, move files
-- **Images** — generate images via xAI Grok
+### 53 Built-in Tools (`dot_*`)
+- **Memory** — durable save / search / update
+- **Web** — search, fetch
+- **Browser** — Chrome DevTools Protocol (no Playwright dep)
+- **Files** — read / write / list / delete / move
+- **Images** — generate via xAI Grok
 - **Tasks** — multi-step autonomous workflows
-- **Jobs** — scheduled prompts with cron-like intervals
-- **Triggers** — event-driven agent responses
-- **Weather** — Open-Meteo API (no key required)
+- **Jobs** — scheduled prompts
+- **Triggers** — event-driven wake-ups
+- **Weather** — Open-Meteo (no key)
 
-### 🔌 **Multi-Provider Support**
-- **xAI Grok** — grok-4-1-fast-reasoning, with real-time web search and image generation
-- **Anthropic Claude** — claude-sonnet-4-5, claude-opus-4, etc.
-- **OpenAI** — gpt-4o, gpt-4-turbo, etc.
-- **Cerebras** — ultra-fast inference
-- **Ollama** — local models, no API cost
+### Surfaces
+- **CLI** — one-shot, REPL, inspect commands
+- **TUI** — full-screen chat, zero deps
+- **HTTP** — `serve` and optional OpenAI-compatible API
+- **Library** — embed in Node apps
 
-### 🔒 **Sandbox Mode**
-- **Deny-by-default** tool access — no files, code, browser, or messaging
-- **Domain allowlists** — `--allow github`, `--allow slack`
-- **Preset-based** tool unlocking — `--allow messages`, `--allow images`
+### Multi-Provider
+- **xAI Grok** — default
+- **Anthropic Claude**
+- **OpenAI**
+- **Cerebras**
+- **Ollama** / **local** — OpenAI-compatible local servers
 
-### 💾 **Pluggable Storage**
-- **SQLite** — zero dependencies with Node.js 22.5+
-- **Memory** — in-memory for testing
-
-### 📊 **Full Audit Trail**
-- **Every message** logged with full content
-- **Every tool call** logged with input/output
-- **Event store** for analytics and debugging
+### Sandbox, Storage, Audit
+- Deny-by-default sandbox + domain presets
+- SQLite (Node built-in) or in-memory stores
+- Full message and tool-call audit trail
 
 <br />
 
@@ -200,13 +211,14 @@ dotbot — AI agent CLI
 
 Usage:
   dotbot "message"            One-shot query
-  dotbot                      Interactive chat
+  dotbot                      Interactive REPL
   dotbot tui                  Full-screen TUI chat
   dotbot serve [--port N]     Start HTTP server (default: 3000)
   dotbot serve --openai       Start OpenAI-compatible API server
   echo "msg" | dotbot         Pipe input from stdin
 
 Commands:
+  tui                         Full-screen terminal UI
   models                      List available models from provider
   doctor                      Check environment and configuration
   tools                       List all available tools
@@ -257,23 +269,21 @@ Config File:
 const agent = createAgent({
   sessionStore,              // required — SessionStore instance
   providers: {
-    xai: { apiKey },         // API keys for each provider
+    xai: { apiKey },
     anthropic: { apiKey },
     openai: { apiKey },
     ollama: { baseUrl },
   },
-  tools: coreTools,          // array of tool definitions
-  cronStore,                 // optional — for scheduled jobs
-  taskStore,                 // optional — for autonomous tasks
-  triggerStore,              // optional — for event triggers
-  memoryStore,               // optional — for long-term memory
-  eventStore,                // optional — for audit logging
+  tools: coreTools,
+  cronStore,
+  taskStore,
+  triggerStore,
+  memoryStore,
+  eventStore,
 });
 ```
 
 ### `agent.chat(options)`
-
-Streams a response as an async generator:
 
 ```javascript
 for await (const event of agent.chat({
@@ -281,8 +291,8 @@ for await (const event of agent.chat({
   message: 'Hello',
   provider: 'xai',
   model: 'grok-4-1-fast-reasoning',
-  signal: abortController.signal,  // optional
-  context: { userID: 'user123' },  // passed to tools
+  signal: abortController.signal,
+  context: { userID: 'user123' },
 })) {
   switch (event.type) {
     case 'text_delta':  console.log(event.text); break;
@@ -293,7 +303,7 @@ for await (const event of agent.chat({
 }
 ```
 
-### SSE Event Types
+### Event Types
 
 | Event | Fields | Description |
 |-------|--------|-------------|
@@ -308,6 +318,8 @@ for await (const event of agent.chat({
 <br />
 
 ## Built-in Tools (53)
+
+All names are `dot_*` to avoid colliding with provider built-in tools.
 
 | Category | Tools |
 |----------|-------|
@@ -332,7 +344,6 @@ for await (const event of agent.chat({
 Tasks enable multi-step autonomous workflows. In `auto` mode, the agent executes steps sequentially without user intervention.
 
 ```javascript
-// Agent creates and executes a task
 await agent.chat({
   sessionId,
   message: `Create a task to audit our API endpoints.
@@ -341,7 +352,6 @@ await agent.chat({
   model: 'grok-4-1-fast-reasoning',
   context: { userID: 'user-123' },
 });
-// Step 1 runs → schedules Step 2 → ... → task complete
 ```
 
 **Requires:** `taskStore` and `cronStore` passed to `createAgent()`.
@@ -353,7 +363,6 @@ await agent.chat({
 Jobs are cron-like scheduled prompts that fire automatically.
 
 ```javascript
-// Agent schedules a daily job
 await agent.chat({
   sessionId,
   message: 'Schedule a daily job at 9am to check my calendar and summarize my day',
@@ -369,9 +378,10 @@ await agent.chat({
 
 | Technology | Purpose |
 |------------|---------|
-| **TypeScript** | Strict, NodeNext ESM; compiled to `dist/` (zero runtime deps) |
+| **TypeScript** | Strict NodeNext ESM → `dist/` (zero runtime deps) |
 | **Node.js 22.5+** | Runtime with built-in SQLite |
 | **Chrome DevTools Protocol** | Browser automation (zero deps) |
+| **ANSI + raw stdin** | Full-screen TUI (zero deps) |
 | **SQLite** | Default storage (zero deps) |
 
 <br />
@@ -380,41 +390,31 @@ await agent.chat({
 
 ```
 dotbot/
-├── types.ts                # Shared types (Message, AgentEvent, ToolDefinition, Provider)
+├── types.ts                # Shared types
 ├── bin/
-│   └── dotbot.ts           # CLI entry point (REPL, server, sandbox mode)
+│   ├── dotbot.ts           # CLI (REPL, serve, sandbox, commands)
+│   └── tui.ts              # Full-screen TUI
 ├── core/
 │   ├── agent.ts            # Streaming agent loop
-│   ├── events.ts           # SSE event schemas
+│   ├── events.ts           # Event schemas
 │   ├── compaction.ts       # Context window management
 │   ├── normalize.ts        # Message format conversion
 │   ├── failover.ts         # Cross-provider failover
 │   ├── cron_handler.ts     # Scheduled job execution
 │   └── trigger_handler.ts  # Event-driven triggers
-├── storage/
-│   ├── SessionStore.ts     # Session interface
-│   ├── TaskStore.ts        # Task interface
-│   ├── CronStore.ts        # Job scheduling interface
-│   ├── TriggerStore.ts     # Trigger interface
-│   └── SQLite*.ts          # SQLite adapters
-├── tools/                  # 53 built-in tools
-│   ├── memory.ts
-│   ├── web.ts
-│   ├── browser.ts
-│   ├── tasks.ts
-│   ├── jobs.ts
-│   └── ...
+├── storage/                # Session / task / cron / trigger / SQLite
+├── tools/                  # 53 built-in tools (dot_*)
 ├── utils/
-│   └── providers.ts        # AI provider configs
-└── dist/                   # Compiled output (tsc): .js + .d.ts, published artifact
+│   └── providers.ts
+└── dist/                   # Published artifact
 ```
 
 <br />
 
 ## Requirements
 
-- **Node.js 22.5+** with `--experimental-sqlite` flag, or **Node.js 23+**
-- API key for at least one provider (Anthropic, OpenAI, xAI) or local Ollama
+- **Node.js 22.5+** (built-in SQLite) or **Node.js 23+**
+- API key for at least one cloud provider, **or** a local OpenAI-compatible server (`--provider local` / Ollama)
 
 <br />
 
@@ -424,9 +424,10 @@ dotbot/
 git clone https://github.com/stevederico/dotbot
 cd dotbot
 npm install
-npm run build              # compile TypeScript to dist/
-npm test                   # typecheck + run tests
+npm run build
+npm test
 node dist/bin/dotbot.js --help
+node dist/bin/dotbot.js tui
 ```
 
 <br />
@@ -440,7 +441,9 @@ node dist/bin/dotbot.js --help
 
 ## Related Projects
 
-- [dottie-desktop](https://github.com/stevederico/dottie-desktop) — macOS AI assistant powered by dotbot
+- [dottie-local](https://github.com/stevederico/dottie-local) — local llama.cpp + optional dotbot harness (HTTP / MCP / CLI; replaces local-ai-cli `ask`)
+- [dottie-talk](https://github.com/stevederico/dottie-talk) — local STT / TTS
+- [dottie-desktop](https://github.com/stevederico/dottie-desktop) — macOS AI assistant
 - [skateboard](https://github.com/stevederico/skateboard) — React starter with auth, Stripe, and SQLite
 
 <br />
