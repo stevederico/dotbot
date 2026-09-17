@@ -113,7 +113,7 @@ function errorMessage(err: unknown): string {
 
 export const messageTools: ToolDefinition[] = [
   {
-    name: "message_list",
+    name: "dot_message_list",
     description: "List the user's message conversations.",
     parameters: {
       type: "object",
@@ -138,7 +138,7 @@ export const messageTools: ToolDefinition[] = [
   },
 
   {
-    name: "message_send",
+    name: "dot_message_send",
     description: "Send a message in a conversation. Creates a new conversation if one doesn't exist with the recipient.",
     parameters: {
       type: "object",
@@ -180,7 +180,7 @@ export const messageTools: ToolDefinition[] = [
   },
 
   {
-    name: "message_delete",
+    name: "dot_message_delete",
     description: "Delete an entire conversation with a specific person.",
     parameters: {
       type: "object",
@@ -214,7 +214,7 @@ export const messageTools: ToolDefinition[] = [
   },
 
   {
-    name: "message_read",
+    name: "dot_message_read",
     description: "Read messages in a conversation with a specific person.",
     parameters: {
       type: "object",

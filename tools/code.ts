@@ -16,7 +16,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 export const codeTools: ToolDefinition[] = [
   {
-    name: "run_code",
+    name: "dot_run_code",
     description:
       "Execute JavaScript code and return the output. Use this for calculations, data processing, or when the user asks you to run code. The code runs in a Node.js subprocess.",
     parameters: {

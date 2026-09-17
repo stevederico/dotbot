@@ -349,9 +349,9 @@ export function createBrowserTools(
 ): ToolDefinition[] {
   return [
     {
-      name: 'browser_navigate',
+      name: 'dot_browser_navigate',
       description:
-        'Navigate a headless browser to a URL and return the page title and text content. PREFERRED tool for reading web pages — renders JavaScript so it works on dynamic sites (live scores, SPAs, dashboards). Use this instead of calling web_search multiple times.',
+        'Navigate a headless browser to a URL and return the page title and text content. PREFERRED tool for reading web pages — renders JavaScript so it works on dynamic sites (live scores, SPAs, dashboards). Use this instead of calling dot_web_search multiple times.',
       parameters: {
         type: 'object',
         properties: {
@@ -396,7 +396,7 @@ export function createBrowserTools(
     },
 
     {
-      name: 'browser_read_page',
+      name: 'dot_browser_read_page',
       description:
         "Read the current page content or a specific section. Use 'text' mode for readable text, 'accessibility' mode for a structured element tree (useful before clicking or typing).",
       parameters: {
@@ -418,7 +418,7 @@ export function createBrowserTools(
           const currentUrl = String(await cdp.getUrl());
 
           if (currentUrl === 'about:blank') {
-            return 'No page loaded. Use browser_navigate first.';
+            return 'No page loaded. Use dot_browser_navigate first.';
           }
 
           if (input.mode === 'accessibility') {
@@ -455,9 +455,9 @@ export function createBrowserTools(
     },
 
     {
-      name: 'browser_click',
+      name: 'dot_browser_click',
       description:
-        "Click an element on the current page by CSS selector or visible text. Use browser_read_page with 'accessibility' mode first to find the right selector or text.",
+        "Click an element on the current page by CSS selector or visible text. Use dot_browser_read_page with 'accessibility' mode first to find the right selector or text.",
       parameters: {
         type: 'object',
         properties: {
@@ -483,7 +483,7 @@ export function createBrowserTools(
           const currentUrl = String(await cdp.getUrl());
 
           if (currentUrl === 'about:blank') {
-            return 'No page loaded. Use browser_navigate first.';
+            return 'No page loaded. Use dot_browser_navigate first.';
           }
 
           // Use retry helpers for more reliable clicking
@@ -517,7 +517,7 @@ export function createBrowserTools(
     },
 
     {
-      name: 'browser_type',
+      name: 'dot_browser_type',
       description:
         'Type text into an input field on the current page. Finds the field by CSS selector, label, or placeholder text.',
       parameters: {
@@ -552,7 +552,7 @@ export function createBrowserTools(
           const currentUrl = String(await cdp.getUrl());
 
           if (currentUrl === 'about:blank') {
-            return 'No page loaded. Use browser_navigate first.';
+            return 'No page loaded. Use dot_browser_navigate first.';
           }
 
           const inputSelector = typeof input.selector === 'string' ? input.selector : undefined;
@@ -616,7 +616,7 @@ export function createBrowserTools(
     },
 
     {
-      name: 'browser_screenshot',
+      name: 'dot_browser_screenshot',
       description:
         'Take a screenshot of the current page and save it as a PNG. Returns an accessibility summary of the page and the screenshot URL.',
       parameters: {
@@ -639,7 +639,7 @@ export function createBrowserTools(
           const currentUrl = String(await cdp.getUrl());
 
           if (currentUrl === 'about:blank') {
-            return 'No page loaded. Use browser_navigate first.';
+            return 'No page loaded. Use dot_browser_navigate first.';
           }
 
           await mkdir(SCREENSHOT_DIR, { recursive: true });
@@ -679,7 +679,7 @@ export function createBrowserTools(
     },
 
     {
-      name: 'browser_extract',
+      name: 'dot_browser_extract',
       description:
         'Extract structured data from the current page using CSS selectors. Returns an array of objects with the requested fields.',
       parameters: {
@@ -707,7 +707,7 @@ export function createBrowserTools(
           const currentUrl = String(await cdp.getUrl());
 
           if (currentUrl === 'about:blank') {
-            return 'No page loaded. Use browser_navigate first.';
+            return 'No page loaded. Use dot_browser_navigate first.';
           }
 
           const inputSelector = String(input.selector);
@@ -751,7 +751,7 @@ export function createBrowserTools(
     },
 
     {
-      name: 'browser_close',
+      name: 'dot_browser_close',
       description: "Close the current browser session. Use this when you're done browsing to free resources.",
       parameters: {
         type: 'object',

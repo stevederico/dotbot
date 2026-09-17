@@ -34,7 +34,7 @@ function weatherCodeToText(code: number): string {
 
 export const weatherTools: ToolDefinition[] = [
   {
-    name: "weather_get",
+    name: "dot_weather_get",
     description: "Get weather for a city.",
     directReturn: true,
     parameters: {
