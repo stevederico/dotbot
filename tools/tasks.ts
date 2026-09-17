@@ -21,7 +21,7 @@ function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** A normalized step on a task (as stored by task_plan / task_work). */
+/** A normalized step on a task (as stored by dot_task_plan / dot_task_work). */
 interface TaskStep {
   text: string;
   action: string;
@@ -33,7 +33,7 @@ interface TaskStep {
   [key: string]: JsonValue;
 }
 
-/** A step object as received from the task_plan tool input. */
+/** A step object as received from the dot_task_plan tool input. */
 interface TaskPlanStepInput {
   text: string;
   action?: string;
@@ -128,7 +128,7 @@ function requireStep(step: TaskStep | undefined): TaskStep {
 
 export const taskTools: ToolDefinition[] = [
   {
-    name: "task_create",
+    name: "dot_task_create",
     description:
       "Create a new task with optional steps, priority, deadline, and category. " +
       "Use mode='auto' for autonomous execution where steps run sequentially without user prompting.",
@@ -188,7 +188,7 @@ export const taskTools: ToolDefinition[] = [
         return `Task created: "${input.description}" (ID: ${taskId})\n` +
                `Mode: ${task.mode}, Priority: ${task.priority}, Steps: ${steps.length}` +
                (task.mode === 'auto' && steps.length > 0 ?
-                 `\n\nCall task_work with task_id "${taskId}" to start executing steps automatically.` : '');
+                 `\n\nCall dot_task_work with task_id "${taskId}" to start executing steps automatically.` : '');
       } catch (err) {
         return `Error creating task: ${errMessage(err)}`;
       }
@@ -196,7 +196,7 @@ export const taskTools: ToolDefinition[] = [
   },
 
   {
-    name: "task_list",
+    name: "dot_task_list",
     description: "List all tasks for the user, optionally filtered by status or category.",
     parameters: {
       type: "object",
@@ -229,7 +229,7 @@ export const taskTools: ToolDefinition[] = [
         if (tasks.length === 0) {
           return input.status || input.category
             ? `No tasks found matching filters.`
-            : `No tasks yet. Create one with task_create.`;
+            : `No tasks yet. Create one with dot_task_create.`;
         }
 
         return tasks.map((g, i) => {
@@ -247,7 +247,7 @@ export const taskTools: ToolDefinition[] = [
   },
 
   {
-    name: "task_plan",
+    name: "dot_task_plan",
     description:
       "Break down a task into detailed steps with action prompts. Use this to add or replace steps on an existing task.",
     parameters: {
@@ -304,7 +304,7 @@ export const taskTools: ToolDefinition[] = [
         });
 
         const stepList = normalizedSteps.map((s, i) => `  ${i + 1}. ${s.text}`).join("\n");
-        return `Task planned with ${normalizedSteps.length} steps and set to auto mode:\n${stepList}\n\nCall task_work with task_id "${input.task_id}" to start executing the first step.`;
+        return `Task planned with ${normalizedSteps.length} steps and set to auto mode:\n${stepList}\n\nCall dot_task_work with task_id "${input.task_id}" to start executing the first step.`;
       } catch (err) {
         return `Error planning task: ${errMessage(err)}`;
       }
@@ -312,10 +312,10 @@ export const taskTools: ToolDefinition[] = [
   },
 
   {
-    name: "task_work",
+    name: "dot_task_work",
     description:
       "Start executing the next pending step on a task. Returns the step's action prompt. " +
-      "After completing the action, call task_step_done to record the result.",
+      "After completing the action, call dot_task_step_done to record the result.",
     parameters: {
       type: "object",
       properties: {
@@ -334,13 +334,13 @@ export const taskTools: ToolDefinition[] = [
         const task = await taskStore.getTask(context.userID, input.task_id);
         if (!task) return "Task not found.";
         if (!task.steps || task.steps.length === 0) {
-          return "Task has no steps. Use task_plan to add steps first.";
+          return "Task has no steps. Use dot_task_plan to add steps first.";
         }
 
         // Find next undone step
         const stepIdx = task.steps.findIndex(s => !s.done);
         if (stepIdx === -1) {
-          return "All steps are already complete. Use task_complete to finish the task.";
+          return "All steps are already complete. Use dot_task_complete to finish the task.";
         }
 
         const step = requireStep(task.steps[stepIdx]);
@@ -360,7 +360,7 @@ export const taskTools: ToolDefinition[] = [
         return (
           `[${progress}] "${step.text}"\n\n` +
           `Action: ${step.action || step.text}\n\n` +
-          `Execute this action now, then call task_step_done with task_id "${input.task_id}" and a result summary.`
+          `Execute this action now, then call dot_task_step_done with task_id "${input.task_id}" and a result summary.`
         );
       } catch (err) {
         return `Error starting work: ${errMessage(err)}`;
@@ -369,7 +369,7 @@ export const taskTools: ToolDefinition[] = [
   },
 
   {
-    name: "task_step_done",
+    name: "dot_task_step_done",
     description:
       "Mark the current in-progress step as completed and record its result. " +
       "If the task is in auto mode and more steps remain, schedules the next step via cron.",
@@ -395,7 +395,7 @@ export const taskTools: ToolDefinition[] = [
         // Find the current in-progress step
         const currentSteps = task.steps ?? [];
         const stepIdx = currentSteps.findIndex(s => s.startedAt && !s.done);
-        if (stepIdx === -1) return "No in-progress step found. Call task_work first.";
+        if (stepIdx === -1) return "No in-progress step found. Call dot_task_work first.";
 
         const steps = [...currentSteps];
         steps[stepIdx] = {
@@ -442,7 +442,7 @@ export const taskTools: ToolDefinition[] = [
         }
         return (
           `Step ${stepIdx + 1} completed (${doneCount}/${steps.length}).` +
-          (task.mode === "auto" ? " Next step scheduled automatically." : " Call task_work to continue.")
+          (task.mode === "auto" ? " Next step scheduled automatically." : " Call dot_task_work to continue.")
         );
       } catch (err) {
         return `Error completing step: ${errMessage(err)}`;
@@ -451,7 +451,7 @@ export const taskTools: ToolDefinition[] = [
   },
 
   {
-    name: "task_complete",
+    name: "dot_task_complete",
     description: "Mark a task as completed.",
     parameters: {
       type: "object",
@@ -485,7 +485,7 @@ export const taskTools: ToolDefinition[] = [
   },
 
   {
-    name: "task_delete",
+    name: "dot_task_delete",
     description: "Delete a task permanently.",
     parameters: {
       type: "object",
@@ -511,7 +511,7 @@ export const taskTools: ToolDefinition[] = [
   },
 
   {
-    name: "task_search",
+    name: "dot_task_search",
     description: "Search tasks by text in description or steps.",
     parameters: {
       type: "object",
@@ -541,7 +541,7 @@ export const taskTools: ToolDefinition[] = [
   },
 
   {
-    name: "task_stats",
+    name: "dot_task_stats",
     description: "Get task statistics (total, completed, in progress, by category, etc.).",
     parameters: {
       type: "object",

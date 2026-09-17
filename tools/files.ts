@@ -10,7 +10,7 @@ import type {
 export const fileTools: ToolDefinition[] = [
   // ── File Read ──
   {
-    name: "file_read",
+    name: "dot_file_read",
     description:
       "Read the contents of a file from the user's virtual filesystem. Use this when the user asks you to look at, review, or analyze a file they've saved.",
     parameters: {
@@ -48,7 +48,7 @@ export const fileTools: ToolDefinition[] = [
 
   // ── File Write ──
   {
-    name: "file_write",
+    name: "dot_file_write",
     description:
       "Write content to a file in the user's virtual filesystem. Creates the file if it doesn't exist, or updates it if it does. Use this when the user asks you to create or save a file.",
     parameters: {
@@ -98,7 +98,7 @@ export const fileTools: ToolDefinition[] = [
 
   // ── File List ──
   {
-    name: "file_list",
+    name: "dot_file_list",
     description: "List files and folders in a directory of the user's virtual filesystem.",
     parameters: {
       type: "object",
@@ -128,7 +128,7 @@ export const fileTools: ToolDefinition[] = [
 
   // ── File Delete ──
   {
-    name: "file_delete",
+    name: "dot_file_delete",
     description: "Delete a file or folder from the user's virtual filesystem.",
     parameters: {
       type: "object",
@@ -155,7 +155,7 @@ export const fileTools: ToolDefinition[] = [
 
   // ── File Move/Rename ──
   {
-    name: "file_move",
+    name: "dot_file_move",
     description: "Move or rename a file in the user's virtual filesystem.",
     parameters: {
       type: "object",
@@ -193,7 +193,7 @@ export const fileTools: ToolDefinition[] = [
 
   // ── Folder Create ──
   {
-    name: "folder_create",
+    name: "dot_folder_create",
     description: "Create a new folder in the user's virtual filesystem.",
     parameters: {
       type: "object",

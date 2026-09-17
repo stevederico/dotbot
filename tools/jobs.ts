@@ -73,7 +73,7 @@ function toCronTask(row: Record<string, unknown>): CronTaskRecord {
  */
 export const jobTools: ToolDefinition[] = [
   {
-    name: "schedule_job",
+    name: "dot_schedule_job",
     description:
       "Schedule a job to run later or on a recurring basis. The job will send a message to you (the agent) at the scheduled time, and you will process it like a normal user message. Use this for reminders, periodic checks, daily summaries, etc.",
     parameters: {
@@ -135,7 +135,7 @@ export const jobTools: ToolDefinition[] = [
   },
 
   {
-    name: "list_jobs",
+    name: "dot_list_jobs",
     description: "List all scheduled jobs (active and completed).",
     parameters: {
       type: "object",
@@ -172,7 +172,7 @@ export const jobTools: ToolDefinition[] = [
   },
 
   {
-    name: "toggle_job",
+    name: "dot_toggle_job",
     description: "Enable or disable a scheduled job without deleting it.",
     parameters: {
       type: "object",
@@ -204,7 +204,7 @@ export const jobTools: ToolDefinition[] = [
   },
 
   {
-    name: "cancel_job",
+    name: "dot_cancel_job",
     description: "Cancel/delete a scheduled job by its ID.",
     parameters: {
       type: "object",

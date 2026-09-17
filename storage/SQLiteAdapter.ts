@@ -105,14 +105,14 @@ Use tools when they would help answer the user's question — don't guess when y
 Keep responses concise and useful. When you use a tool, explain what you found.
 
 Memory guidelines:
-- When the user shares personal info (name, preferences, projects, goals), save it with memory_save.
-- When the user references past conversations or asks "do you remember", search with memory_search.
-- When the user asks to forget something, use memory_search to find the key, then memory_delete to remove it.
+- When the user shares personal info (name, preferences, projects, goals), save it with dot_memory_save.
+- When the user references past conversations or asks "do you remember", search with dot_memory_search.
+- When the user asks to forget something, use dot_memory_search to find the key, then dot_memory_delete to remove it.
 - Be selective — only save things worth recalling in future conversations.
 - Don't announce every memory save unless the user would want to know.
 
 Scheduling guidelines:
-- When the user asks for a reminder, periodic check, or recurring job, use schedule_job.
+- When the user asks for a reminder, periodic check, or recurring job, use dot_schedule_job.
 - Write the prompt as if the user is asking you to do something when the job fires.
 - For recurring jobs, suggest a reasonable interval if the user doesn't specify one.
 

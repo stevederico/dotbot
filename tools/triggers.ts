@@ -64,7 +64,7 @@ function isTriggerStore(store: unknown): store is TriggerStoreApi {
 
 export const triggerTools: ToolDefinition[] = [
   {
-    name: "trigger_create",
+    name: "dot_trigger_create",
     description:
       "Create an event-driven trigger that fires when a specific event occurs. " +
       "Use cooldownMs to prevent spam (e.g., trigger max once per hour). " +
@@ -119,7 +119,7 @@ export const triggerTools: ToolDefinition[] = [
   },
 
   {
-    name: "trigger_list",
+    name: "dot_trigger_list",
     description: "List all triggers, optionally filtered by enabled status or event type.",
     parameters: {
       type: "object",
@@ -151,7 +151,7 @@ export const triggerTools: ToolDefinition[] = [
         if (triggers.length === 0) {
           return input.enabled !== undefined || input.eventType
             ? "No triggers found matching filters."
-            : "No triggers yet. Create one with trigger_create.";
+            : "No triggers yet. Create one with dot_trigger_create.";
         }
 
         return triggers.map((t, i) => {
@@ -171,7 +171,7 @@ export const triggerTools: ToolDefinition[] = [
   },
 
   {
-    name: "trigger_toggle",
+    name: "dot_trigger_toggle",
     description: "Enable or disable a trigger without deleting it.",
     parameters: {
       type: "object",
@@ -205,7 +205,7 @@ export const triggerTools: ToolDefinition[] = [
   },
 
   {
-    name: "trigger_delete",
+    name: "dot_trigger_delete",
     description: "Delete a trigger permanently.",
     parameters: {
       type: "object",

@@ -79,7 +79,7 @@ Run dotbot with restricted tool access — deny-by-default.
 # Full lockdown — safe tools only (memory, search, weather, tasks)
 dotbot --sandbox "What is 2+2?"
 
-# Allow specific domains for web_fetch and browser_navigate
+# Allow specific domains for dot_web_fetch and dot_browser_navigate
 dotbot --sandbox --allow github
 dotbot --sandbox --allow github --allow slack
 
@@ -101,16 +101,16 @@ dotbot --sandbox --allow api.mycompany.com
 
 | Category | Tools | How to unlock |
 |----------|-------|---------------|
-| Filesystem writes | `file_write`, `file_delete`, `file_move`, `folder_create` | Cannot unlock |
-| Arbitrary HTTP | `web_fetch` | `--allow <domain>` |
-| Browser | `browser_navigate` | `--allow <domain>` |
-| Code execution | `run_code` | Always allowed (Node.js permission model) |
+| Filesystem writes | `dot_file_write`, `dot_file_delete`, `dot_file_move`, `dot_folder_create` | Cannot unlock |
+| Arbitrary HTTP | `dot_web_fetch` | `--allow <domain>` |
+| Browser | `dot_browser_navigate` | `--allow <domain>` |
+| Code execution | `dot_run_code` | Always allowed (Node.js permission model) |
 | Messaging | `message_*` | `--allow messages` |
 | Images | `image_*` | `--allow images` |
-| Notifications | `notify_user` | `--allow notifications` |
-| App generation | `app_generate`, `app_validate` | Cannot unlock |
+| Notifications | `dot_notify_user` | `--allow notifications` |
+| App generation | `dot_app_generate`, `dot_app_validate` | Cannot unlock |
 
-**What's always allowed:** `memory_*`, `web_search`, `grokipedia_search`, `file_read`, `file_list`, `weather_get`, `event_*`, `task_*`, `trigger_*`, `schedule_job`, `list_jobs`, `toggle_job`, `cancel_job`
+**What's always allowed:** `memory_*`, `dot_web_search`, `dot_grokipedia_search`, `dot_file_read`, `dot_file_list`, `dot_weather_get`, `event_*`, `task_*`, `trigger_*`, `dot_schedule_job`, `dot_list_jobs`, `dot_toggle_job`, `dot_cancel_job`
 
 **Domain presets:** `github`, `slack`, `discord`, `npm`, `pypi`, `jira`, `huggingface`, `docker`, `telegram`
 
@@ -306,19 +306,19 @@ for await (const event of agent.chat({
 
 | Category | Tools |
 |----------|-------|
-| **Memory** (6) | `memory_save`, `memory_search`, `memory_delete`, `memory_list`, `memory_read`, `memory_update` |
-| **Web** (3) | `web_search`, `web_fetch`, `grokipedia_search` |
-| **Browser** (7) | `browser_navigate`, `browser_read_page`, `browser_click`, `browser_type`, `browser_screenshot`, `browser_extract`, `browser_close` |
-| **Files** (6) | `file_read`, `file_write`, `file_list`, `file_delete`, `file_move`, `folder_create` |
-| **Images** (3) | `image_generate`, `image_list`, `image_search` |
-| **Tasks** (9) | `task_create`, `task_list`, `task_plan`, `task_work`, `task_step_done`, `task_complete`, `task_delete`, `task_search`, `task_stats` |
-| **Triggers** (4) | `trigger_create`, `trigger_list`, `trigger_toggle`, `trigger_delete` |
-| **Jobs** (4) | `schedule_job`, `list_jobs`, `cancel_job`, `toggle_job` |
-| **Messages** (4) | `message_list`, `message_send`, `message_read`, `message_delete` |
-| **Code** (1) | `run_code` |
-| **Weather** (1) | `weather_get` |
-| **Notify** (1) | `notify_user` |
-| **App Gen** (2) | `app_generate`, `app_validate` |
+| **Memory** (6) | `dot_memory_save`, `dot_memory_search`, `dot_memory_delete`, `dot_memory_list`, `dot_memory_read`, `dot_memory_update` |
+| **Web** (3) | `dot_web_search`, `dot_web_fetch`, `dot_grokipedia_search` |
+| **Browser** (7) | `dot_browser_navigate`, `dot_browser_read_page`, `dot_browser_click`, `dot_browser_type`, `dot_browser_screenshot`, `dot_browser_extract`, `dot_browser_close` |
+| **Files** (6) | `dot_file_read`, `dot_file_write`, `dot_file_list`, `dot_file_delete`, `dot_file_move`, `dot_folder_create` |
+| **Images** (3) | `dot_image_generate`, `dot_image_list`, `dot_image_search` |
+| **Tasks** (9) | `dot_task_create`, `dot_task_list`, `dot_task_plan`, `dot_task_work`, `dot_task_step_done`, `dot_task_complete`, `dot_task_delete`, `dot_task_search`, `dot_task_stats` |
+| **Triggers** (4) | `dot_trigger_create`, `dot_trigger_list`, `dot_trigger_toggle`, `dot_trigger_delete` |
+| **Jobs** (4) | `dot_schedule_job`, `dot_list_jobs`, `dot_cancel_job`, `dot_toggle_job` |
+| **Messages** (4) | `dot_message_list`, `dot_message_send`, `dot_message_read`, `dot_message_delete` |
+| **Code** (1) | `dot_run_code` |
+| **Weather** (1) | `dot_weather_get` |
+| **Notify** (1) | `dot_notify_user` |
+| **App Gen** (2) | `dot_app_generate`, `dot_app_validate` |
 
 <br />
 
