@@ -1,3 +1,9 @@
+0.43.0
+
+  Add zero-dep full-screen TUI
+  Wire dotbot tui command
+  Add wrap/paint/visible unit tests
+
 0.42.0
 
   Prefix all tool names with dot_
