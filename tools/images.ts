@@ -217,7 +217,7 @@ export async function generateImageFromText(
 
 export const imageTools: ToolDefinition[] = [
   {
-    name: "image_generate",
+    name: "dot_image_generate",
     description: "Generate an AI image from a text prompt.",
     parameters: {
       type: "object",
@@ -241,7 +241,7 @@ export const imageTools: ToolDefinition[] = [
   },
 
   {
-    name: "image_list",
+    name: "dot_image_list",
     description: "List the user's photos and generated images. Returns the most recent images with their prompts and dates.",
     parameters: {
       type: "object",
@@ -272,7 +272,7 @@ export const imageTools: ToolDefinition[] = [
   },
 
   {
-    name: "image_search",
+    name: "dot_image_search",
     description: "Search the user's photos and generated images by prompt text.",
     parameters: {
       type: "object",

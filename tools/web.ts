@@ -13,11 +13,11 @@ function asArray(value: unknown): unknown[] {
 }
 
 export const webTools: ToolDefinition[] = [
-  // ── Web Search (Grok Responses API with web_search tool, fallback to DuckDuckGo) ──
+  // ── Web Search (Grok Responses API with built-in web_search tool, fallback to DuckDuckGo) ──
   {
-    name: "web_search",
+    name: "dot_web_search",
     description:
-      "Search the web for current information. Use ONLY ONCE per question to find the right URL — then use browser_navigate to read the actual page. Never call this tool multiple times for the same topic. For live or dynamic content (scores, dashboards), always prefer browser_navigate over repeated searches.",
+      "Search the web for current information. Use ONLY ONCE per question to find the right URL — then use dot_browser_navigate to read the actual page. Never call this tool multiple times for the same topic. For live or dynamic content (scores, dashboards), always prefer dot_browser_navigate over repeated searches.",
     parameters: {
       type: "object",
       properties: {
@@ -32,7 +32,7 @@ export const webTools: ToolDefinition[] = [
       const apiKey = context?.providers?.xai?.apiKey;
       const query = String(input.query);
 
-      // Primary: Use Grok Responses API with web_search tool
+      // Primary: Use Grok Responses API with built-in web_search tool
       if (apiKey) {
         try {
           const res = await fetch("https://api.x.ai/v1/responses", {
@@ -85,10 +85,10 @@ export const webTools: ToolDefinition[] = [
             return result || "No results found.";
           } else {
             const errText = await res.text();
-            console.error("[web_search] Grok API error:", res.status, errText);
+            console.error("[dot_web_search] Grok API error:", res.status, errText);
           }
         } catch (err) {
-          console.error("[web_search] Grok search failed:", err instanceof Error ? err.message : String(err));
+          console.error("[dot_web_search] Grok search failed:", err instanceof Error ? err.message : String(err));
           // Fall through to DuckDuckGo
         }
       }
@@ -135,7 +135,7 @@ export const webTools: ToolDefinition[] = [
 
   // ── Grokipedia Search ──
   {
-    name: "grokipedia_search",
+    name: "dot_grokipedia_search",
     description:
       "Look up a topic on Grokipedia, a Wikipedia-like encyclopedia. Use this when the user asks to look something up on Grokipedia or wants an encyclopedic article.",
     parameters: {
@@ -186,7 +186,7 @@ export const webTools: ToolDefinition[] = [
 
   // ── Web Fetch ──
   {
-    name: "web_fetch",
+    name: "dot_web_fetch",
     description:
       "Make an HTTP request and return the response. Supports GET, POST, PUT, PATCH, and DELETE. Use this to read web pages, call APIs, or send data to external services.",
     parameters: {

@@ -171,7 +171,7 @@ export function extractAppName(prompt: string): string {
  */
 export const appgenTools: ToolDefinition[] = [
   {
-    name: 'app_generate',
+    name: 'dot_app_generate',
     description: 'Generate a React app component from a natural language description. Returns executable JavaScript code that uses React.createElement() (no JSX). The code can be executed in a browser with React and hooks in scope.',
     parameters: {
       type: 'object',
@@ -288,7 +288,7 @@ export const appgenTools: ToolDefinition[] = [
   },
 
   {
-    name: 'app_validate',
+    name: 'dot_app_validate',
     description: 'Validate that generated React component code is syntactically correct and follows the expected structure.',
     parameters: {
       type: 'object',

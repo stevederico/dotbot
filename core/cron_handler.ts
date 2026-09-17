@@ -325,7 +325,7 @@ export function createCronHandler({
 
       const steps = taskDoc.steps ?? [];
       const doneCount = steps.filter(s => s.done).length;
-      return `[Task Work] Continue auto-executing task "${taskDoc.description}" (${doneCount}/${steps.length} steps done). Call task_work with task_id "${task.taskId}" to execute the next step.`;
+      return `[Task Work] Continue auto-executing task "${taskDoc.description}" (${doneCount}/${steps.length} steps done). Call dot_task_work with task_id "${task.taskId}" to execute the next step.`;
     } catch (err) {
       console.error('[cron] task_step error:', err instanceof Error ? err.message : err);
       return null;
@@ -364,7 +364,7 @@ export function createCronHandler({
       if (autoTask && autoTask.steps) {
         const doneCount = autoTask.steps.filter(s => s.done).length;
         const nextStep = autoTask.steps.find(s => !s.done);
-        taskContent = `[Heartbeat] Auto-mode task "${autoTask.description}" has pending steps (${doneCount}/${autoTask.steps.length} done). Call task_work with task_id "${autoTask._id || autoTask.id}" to execute: "${nextStep?.text}"`;
+        taskContent = `[Heartbeat] Auto-mode task "${autoTask.description}" has pending steps (${doneCount}/${autoTask.steps.length} done). Call dot_task_work with task_id "${autoTask._id || autoTask.id}" to execute: "${nextStep?.text}"`;
       } else {
         // List all active tasks
         const lines = tasks.map(t => {

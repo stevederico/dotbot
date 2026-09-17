@@ -1,3 +1,9 @@
+0.42.0
+
+  Prefix all tool names with dot_
+  Avoid clash with provider built-ins
+  Keep Grok API type web_search unprefixed
+
 0.41.1
 
   FailoverError message includes provider body hints (e.g. free credit used)

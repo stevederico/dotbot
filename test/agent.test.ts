@@ -133,7 +133,7 @@ describe('agentLoop — local short plain-text response flush', () => {
     // branch, not the flush path.
     restoreFetch = stubFetch(mockSSEResponse([
       { content: '<tool_call>' },
-      { content: '{"name":"web_search","arguments":{"query":"weather"}}' },
+      { content: '{"name":"dot_web_search","arguments":{"query":"weather"}}' },
       { content: '</tool_call>' },
       { finish_reason: 'stop' },
     ]));
@@ -146,7 +146,7 @@ describe('agentLoop — local short plain-text response flush', () => {
       ],
       tools: [
         {
-          name: 'web_search',
+          name: 'dot_web_search',
           description: 'Search',
           parameters: { type: 'object' },
           execute: async () => 'sunny',

@@ -84,7 +84,7 @@ function generateMemoryKey(content: string): string {
 
 export const memoryTools: ToolDefinition[] = [
   {
-    name: "memory_save",
+    name: "dot_memory_save",
     description:
       "Save an important fact, preference, or piece of information to long-term memory. Use this when the user tells you something worth remembering for future conversations — their name, preferences, projects, goals, important dates, etc. Be selective: only save things that would be useful to recall later.",
     parameters: {
@@ -127,7 +127,7 @@ export const memoryTools: ToolDefinition[] = [
   },
 
   {
-    name: "memory_search",
+    name: "dot_memory_search",
     description:
       "Search long-term memory for previously saved information. Use this when the user references something from a past conversation, asks 'do you remember...', or when context from past interactions would help you give a better answer.",
     parameters: {
@@ -187,7 +187,7 @@ export const memoryTools: ToolDefinition[] = [
   },
 
   {
-    name: "memory_delete",
+    name: "dot_memory_delete",
     description:
       "Delete a specific memory by its key. Use this when the user asks to forget something or remove outdated information.",
     parameters: {
@@ -195,7 +195,7 @@ export const memoryTools: ToolDefinition[] = [
       properties: {
         key: {
           type: "string",
-          description: "The memory key to delete. Use memory_search first to find the key.",
+          description: "The memory key to delete. Use dot_memory_search first to find the key.",
         },
       },
       required: ["key"],
@@ -217,7 +217,7 @@ export const memoryTools: ToolDefinition[] = [
   },
 
   {
-    name: "memory_list",
+    name: "dot_memory_list",
     description:
       "List all memories saved in the knowledge graph. Returns all memory keys and their content. Use this when you need to see everything that's stored, or when the user asks 'what do you remember about me' or 'show me all my memories'.",
     parameters: {
@@ -255,7 +255,7 @@ export const memoryTools: ToolDefinition[] = [
   },
 
   {
-    name: "memory_read",
+    name: "dot_memory_read",
     description:
       "Read a specific memory by its exact key. Use this when you know the key and want to retrieve its full content.",
     parameters: {
@@ -263,7 +263,7 @@ export const memoryTools: ToolDefinition[] = [
       properties: {
         key: {
           type: "string",
-          description: "The exact memory key to read. Use memory_list or memory_search to find keys.",
+          description: "The exact memory key to read. Use dot_memory_list or dot_memory_search to find keys.",
         },
       },
       required: ["key"],
@@ -300,9 +300,9 @@ export const memoryTools: ToolDefinition[] = [
   },
 
   {
-    name: "memory_update",
+    name: "dot_memory_update",
     description:
-      "Update an existing memory or create a new one with a specific key. Use this when you need to modify existing information or when you want full control over the memory key (unlike memory_save which auto-generates keys).",
+      "Update an existing memory or create a new one with a specific key. Use this when you need to modify existing information or when you want full control over the memory key (unlike dot_memory_save which auto-generates keys).",
     parameters: {
       type: "object",
       properties: {

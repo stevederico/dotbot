@@ -61,7 +61,7 @@ function errorMessage(err: unknown): string {
 
 export const notifyTools: ToolDefinition[] = [
   {
-    name: "notify_user",
+    name: "dot_notify_user",
     description:
       "Send a notification to the user. Use this during heartbeat or scheduled tasks to proactively inform the user of something useful. The notification appears in their notification center.",
     parameters: {
