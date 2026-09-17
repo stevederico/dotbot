@@ -2,7 +2,7 @@
   <img src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExaGNjeWoweGx4bGYxZXNvYmtsYW80MjlxODFmeTN0cHE3cHN6emFoNiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gYWeVOiMmbg3kzCTq5/giphy.gif" alt="dotbot" width="200">
   <h1 align="center" style="border-bottom: none; margin-bottom: 0;">dotbot</h1>
   <h3 align="center" style="margin-top: 0; font-weight: normal;">
-    The ultra-lean AI agent harness.<br>
+    The ultra-lean agent harness.<br>
     ~11k lines. 53 tools. 0 dependencies.
   </h3>
 </div>
