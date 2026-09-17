@@ -26,7 +26,7 @@ Everything you need for AI agents. Nothing you don't. No bloated abstractions. N
 
 ## What is dotbot?
 
-A **streaming AI agent harness** — tool loop, memory, jobs, sandbox — not an inference engine. The model lives elsewhere (xAI, Anthropic, OpenAI, Ollama, or a local OpenAI-compatible server such as [dottie-local](https://github.com/stevederico/dottie-local) / llama.cpp).
+A **streaming agent harness** — tool loop, memory, jobs, sandbox — not an inference engine. The model lives elsewhere (xAI, Anthropic, OpenAI, Ollama, or a local OpenAI-compatible server such as [dottie-local](https://github.com/stevederico/dottie-local) / llama.cpp).
 
 **Surfaces:**
 
