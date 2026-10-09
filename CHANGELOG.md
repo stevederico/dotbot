@@ -1,3 +1,7 @@
+0.44.0
+
+  Add MIT license
+
 0.43.1
 
   Refresh README for TUI and surfaces
