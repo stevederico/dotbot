@@ -1,3 +1,7 @@
+0.44.1
+
+  Sync lockfile version
+
 0.44.0
 
   Add MIT license
