@@ -1,12 +1,12 @@
 {
   "name": "@stevederico/dotbot",
-  "version": "0.44.1",
+  "version": "0.44.2",
   "description": "AI agent CLI and library for Node.js — streaming, multi-provider, tool execution, autonomous tasks",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "dotbot": "./dist/bin/dotbot.js"
+    "dotbot": "dist/bin/dotbot.js"
   },
   "scripts": {
     "build": "tsc",
@@ -69,7 +69,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/stevederico/dotbot.git"
+    "url": "git+https://github.com/stevederico/dotbot.git"
   },
   "publishConfig": {
     "access": "public"

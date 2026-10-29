@@ -1,3 +1,7 @@
+0.44.2
+
+  Fix npm bin path
+
 0.44.1
 
   Sync lockfile version
