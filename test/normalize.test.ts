@@ -1,6 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import { toStandardFormat, toProviderFormat } from '../core/normalize.js';
+import { parseToolCalls } from '../core/gptoss_tool_parser.js';
 import type { Message } from '../types.js';
 
 describe('toStandardFormat', () => {
@@ -76,5 +77,23 @@ describe('toProviderFormat', () => {
     const result = toProviderFormat(messages, 'anthropic');
     assert.strictEqual(result[0]?.role, 'assistant');
     assert.ok(Array.isArray(result[0]?.content));
+  });
+});
+
+describe('tool call argument encoding', () => {
+  test('parseToolCalls decodes string arguments into an object', () => {
+    const calls = parseToolCalls('<tool_call>{"name":"dot_web_search","arguments":"{\\"q\\":\\"weather\\"}"}</tool_call>');
+    assert.strictEqual(calls.length, 1);
+    assert.deepStrictEqual(calls[0]?.function.arguments, { q: 'weather' });
+  });
+
+  test('OpenAI wire tool_calls carry arguments as a JSON string', () => {
+    const messages: Message[] = [{
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ id: 't1', name: 'dot_web_search', input: { q: 'weather' }, result: 'sunny', status: 'done' }]
+    }];
+    const result = toProviderFormat(messages, 'openai');
+    assert.strictEqual(result[0]?.tool_calls?.[0]?.function.arguments, '{"q":"weather"}');
   });
 });

@@ -114,8 +114,8 @@ class BrowserSessionManager {
     const cdp = new CDPClient(targetWsUrl);
     await cdp.connect();
 
-    const headed = !!process.env.DOTBOT_CHROME_PATH;
-    if (!headed) {
+    const keepRealWindowSizeAndUserAgent = !!process.env.DOTBOT_CHROME_PATH;
+    if (!keepRealWindowSizeAndUserAgent) {
       await cdp.setViewport(1280, 720);
       await cdp.send('Network.setUserAgentOverride', {
         userAgent: 'DotBot/1.0 (Headless Browser)'

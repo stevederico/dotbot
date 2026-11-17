@@ -3,7 +3,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import { createCronHandler } from '../core/cron_handler.js';
 import type { AgentChatOptions } from '../core/cron_handler.js';
-import type { AgentEvent, Session, SessionStore } from '../types.js';
+import type { AgentEvent, CronStore, Session, SessionStore } from '../types.js';
 
 interface AgentSpy {
   calls: AgentChatOptions[];
@@ -38,6 +38,16 @@ function makeSessionStore(owner = 'user-1'): SessionStore {
   };
 }
 
+function makeUnusedCronStore(): CronStore {
+  return {
+    createTask: async () => unimplemented('cron createTask'),
+    listTasks: async () => unimplemented('cron listTasks'),
+    getTask: async () => unimplemented('cron getTask'),
+    toggleTask: async () => unimplemented('cron toggleTask'),
+    deleteTask: async () => unimplemented('cron deleteTask'),
+  };
+}
+
 function makeAgentSpy(): AgentSpy {
   const calls: AgentChatOptions[] = [];
   return {
@@ -56,12 +66,7 @@ describe('cron_handler — heartbeat skip optimization', () => {
 
     const handleTask = createCronHandler({
       sessionStore,
-      // @ts-expect-error - heartbeat path never touches cronStore; stub it empty
-      cronStore: {},
-      // @ts-expect-error - test passes null to assert the no-store code path
-      taskStore: null,
-      // @ts-expect-error - test passes null to assert the no-store code path
-      memoryStore: null,
+      cronStore: makeUnusedCronStore(),
       providers: {},
       hooks: {
         tasksFinder: async () => [],
@@ -81,12 +86,7 @@ describe('cron_handler — heartbeat skip optimization', () => {
 
     const handleTask = createCronHandler({
       sessionStore,
-      // @ts-expect-error - heartbeat path never touches cronStore; stub it empty
-      cronStore: {},
-      // @ts-expect-error - test passes null to assert the no-store code path
-      taskStore: null,
-      // @ts-expect-error - test passes null to assert the no-store code path
-      memoryStore: null,
+      cronStore: makeUnusedCronStore(),
       providers: {},
       hooks: {
         tasksFinder: async () => [
@@ -108,12 +108,7 @@ describe('cron_handler — heartbeat skip optimization', () => {
 
     const handleTask = createCronHandler({
       sessionStore,
-      // @ts-expect-error - heartbeat path never touches cronStore; stub it empty
-      cronStore: {},
-      // @ts-expect-error - test passes null to assert the no-store code path
-      taskStore: null,
-      // @ts-expect-error - test passes null to assert the no-store code path
-      memoryStore: null,
+      cronStore: makeUnusedCronStore(),
       providers: {},
       hooks: {
         tasksFinder: async () => { throw new Error('db unreachable'); },

@@ -1,3 +1,9 @@
+0.46.0
+
+  Add invariant tests
+  Type cron stubs
+  Clarify headed browser
+
 0.45.0
 
   Remove code comments

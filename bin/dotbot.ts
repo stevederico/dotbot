@@ -15,8 +15,7 @@ const patchedEmit = (event: string | symbol, ...args: unknown[]): boolean => {
   }
   return Reflect.apply(originalEmit, process, [event, ...args]);
 };
-// @ts-expect-error -- intentional override of the overloaded process.emit
-process.emit = patchedEmit;
+process.emit = patchedEmit as typeof process.emit;
 
 import { parseArgs } from 'node:util';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
