@@ -1,6 +1,3 @@
-/**
- * Web tools: search, fetch, grokipedia
- */
 
 import type { ToolDefinition, JsonObject, AgentContext } from "../types.js";
 
@@ -13,7 +10,6 @@ function asArray(value: unknown): unknown[] {
 }
 
 export const webTools: ToolDefinition[] = [
-  // ── Web Search (Grok Responses API with built-in web_search tool, fallback to DuckDuckGo) ──
   {
     name: "dot_web_search",
     description:
@@ -32,7 +28,6 @@ export const webTools: ToolDefinition[] = [
       const apiKey = context?.providers?.xai?.apiKey;
       const query = String(input.query);
 
-      // Primary: Use Grok Responses API with built-in web_search tool
       if (apiKey) {
         try {
           const res = await fetch("https://api.x.ai/v1/responses", {
@@ -89,11 +84,9 @@ export const webTools: ToolDefinition[] = [
           }
         } catch (err) {
           console.error("[dot_web_search] Grok search failed:", err instanceof Error ? err.message : String(err));
-          // Fall through to DuckDuckGo
         }
       }
 
-      // Fallback: DuckDuckGo Instant Answer API
       const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`;
       const res = await fetch(url, {
         headers: { "User-Agent": "DotBot/1.0" },
@@ -133,7 +126,6 @@ export const webTools: ToolDefinition[] = [
     },
   },
 
-  // ── Grokipedia Search ──
   {
     name: "dot_grokipedia_search",
     description:
@@ -184,7 +176,6 @@ export const webTools: ToolDefinition[] = [
     },
   },
 
-  // ── Web Fetch ──
   {
     name: "dot_web_fetch",
     description:

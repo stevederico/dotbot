@@ -1,14 +1,12 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { SQLOutputValue } from 'node:sqlite';
 
-/** Coerce a raw SQLite cell to a string. */
 function asString(value: SQLOutputValue | undefined): string {
   if (typeof value === 'string') return value;
   if (value === null || value === undefined) return '';
   return String(value);
 }
 
-/** A memory entry returned to callers (value parsed from JSON when possible). */
 export interface MemoryEntry {
   key: string;
   value: unknown;
@@ -17,7 +15,6 @@ export interface MemoryEntry {
   updated_at: string;
 }
 
-/** Result of writeMemory(). */
 export interface WriteMemoryResult {
   user_id: string;
   key: string;
@@ -26,23 +23,15 @@ export interface WriteMemoryResult {
   updated_at: string;
 }
 
-/** A key listing row returned by listMemories(). */
 export interface MemoryKeyEntry {
   key: string;
   updated_at: string;
 }
 
-/** Result of a delete/clear operation. */
 export interface DeleteResult {
   deletedCount: number | bigint;
 }
 
-/**
- * SQLite-backed MemoryStore implementation
- *
- * Uses Node.js 22.5+ built-in sqlite module for zero-dependency memory storage.
- * Provides the same interface as the MongoMemoryStore for interchangeable use.
- */
 export class SQLiteMemoryStore {
   db: DatabaseSync | null;
 
@@ -50,11 +39,6 @@ export class SQLiteMemoryStore {
     this.db = null;
   }
 
-  /**
-   * Initialize SQLite memory store
-   *
-   * @param dbPath - Path to SQLite database file
-   */
   async init(dbPath: string): Promise<void> {
     this.db = new DatabaseSync(dbPath);
 
@@ -76,15 +60,6 @@ export class SQLiteMemoryStore {
     console.log('[memory] SQLiteMemoryStore initialized');
   }
 
-  /**
-   * Write or update a memory entry
-   *
-   * @param userId - User identifier
-   * @param key - Memory key
-   * @param value - Value to store (will be JSON-stringified if object)
-   * @param appId - Source application
-   * @returns Created/updated memory object
-   */
   async writeMemory(
     userId: string,
     key: string,
@@ -110,13 +85,6 @@ export class SQLiteMemoryStore {
     return { user_id: userId, key, value: valueStr, app_id: appId, updated_at: now };
   }
 
-  /**
-   * Read a specific memory by key
-   *
-   * @param userId - User identifier
-   * @param key - Memory key
-   * @returns Memory object or null if not found
-   */
   async readMemory(userId: string, key: string): Promise<MemoryEntry | null> {
     if (!this.db) throw new Error('MemoryStore not initialized. Call init() first.');
 
@@ -128,20 +96,9 @@ export class SQLiteMemoryStore {
     return this._rowToEntry(row);
   }
 
-  /**
-   * Read memories matching a pattern
-   *
-   * Supports both regex patterns (e.g., ".*") and SQL LIKE wildcards (e.g., "%foo%").
-   * For simple wildcard matching, use SQL LIKE syntax with %.
-   *
-   * @param userId - User identifier
-   * @param pattern - Pattern to match keys (regex or SQL LIKE)
-   * @returns Array of matching memory objects
-   */
   async readMemoryPattern(userId: string, pattern: string): Promise<MemoryEntry[]> {
     if (!this.db) throw new Error('MemoryStore not initialized. Call init() first.');
 
-    // If pattern uses SQL LIKE syntax (contains %), use SQL directly
     if (pattern.includes('%')) {
       const stmt = this.db.prepare(`
         SELECT * FROM memories WHERE user_id = ? AND key LIKE ? ORDER BY updated_at DESC
@@ -150,7 +107,6 @@ export class SQLiteMemoryStore {
       return rows.map((row) => this._rowToEntry(row));
     }
 
-    // Otherwise, treat as regex pattern
     const stmt = this.db.prepare(`
       SELECT * FROM memories WHERE user_id = ? ORDER BY updated_at DESC
     `);
@@ -162,13 +118,6 @@ export class SQLiteMemoryStore {
       .map((row) => this._rowToEntry(row));
   }
 
-  /**
-   * Delete a memory by key
-   *
-   * @param userId - User identifier
-   * @param key - Memory key to delete
-   * @returns Result with deletedCount
-   */
   async deleteMemory(userId: string, key: string): Promise<DeleteResult> {
     if (!this.db) throw new Error('MemoryStore not initialized. Call init() first.');
 
@@ -178,12 +127,6 @@ export class SQLiteMemoryStore {
     return { deletedCount: result.changes };
   }
 
-  /**
-   * List all memory keys for a user
-   *
-   * @param userId - User identifier
-   * @returns Array of { key, updated_at } objects
-   */
   async listMemories(userId: string): Promise<MemoryKeyEntry[]> {
     if (!this.db) throw new Error('MemoryStore not initialized. Call init() first.');
 
@@ -198,12 +141,6 @@ export class SQLiteMemoryStore {
     }));
   }
 
-  /**
-   * Get all memories for a user with full content
-   *
-   * @param userId - User identifier
-   * @returns Array of full memory objects
-   */
   async getAllMemories(userId: string): Promise<MemoryEntry[]> {
     if (!this.db) throw new Error('MemoryStore not initialized. Call init() first.');
 
@@ -215,12 +152,6 @@ export class SQLiteMemoryStore {
     return rows.map((row) => this._rowToEntry(row));
   }
 
-  /**
-   * Delete all memories for a user
-   *
-   * @param userId - User identifier
-   * @returns Result with deletedCount
-   */
   async clearMemories(userId: string): Promise<DeleteResult> {
     if (!this.db) throw new Error('MemoryStore not initialized. Call init() first.');
 
@@ -230,11 +161,6 @@ export class SQLiteMemoryStore {
     return { deletedCount: result.changes };
   }
 
-  /**
-   * Convert a raw SQLite row to a memory entry with parsed value.
-   *
-   * @private
-   */
   _rowToEntry(row: Record<string, SQLOutputValue>): MemoryEntry {
     return {
       key: asString(row.key),
@@ -245,13 +171,6 @@ export class SQLiteMemoryStore {
     };
   }
 
-  /**
-   * Parse stored value back to object if it's JSON
-   *
-   * @private
-   * @param value - Raw string value from database
-   * @returns Parsed value
-   */
   _parseValue(value: string): unknown {
     try {
       return JSON.parse(value);
@@ -260,9 +179,6 @@ export class SQLiteMemoryStore {
     }
   }
 
-  /**
-   * Close the database connection and checkpoint WAL.
-   */
   close(): void {
     if (this.db) {
       try {

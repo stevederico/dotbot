@@ -18,14 +18,12 @@ import {
   parseInterval,
 } from './cron_constants.js';
 
-/** Coerce a raw SQLite cell to a string. */
 function asString(value: SQLOutputValue | undefined): string {
   if (typeof value === 'string') return value;
   if (value === null || value === undefined) return '';
   return String(value);
 }
 
-/** Coerce a raw SQLite cell to a number. */
 function asNumber(value: SQLOutputValue | undefined): number {
   if (typeof value === 'number') return value;
   if (typeof value === 'bigint') return Number(value);
@@ -33,20 +31,16 @@ function asNumber(value: SQLOutputValue | undefined): number {
   return 0;
 }
 
-/** Coerce a raw SQLite cell to a number or null. */
 function asNumberOrNull(value: SQLOutputValue | undefined): number | null {
   if (value === null || value === undefined) return null;
   return asNumber(value);
 }
 
-/** Coerce a raw SQLite cell to a string or null. */
 function asStringOrNull(value: SQLOutputValue | undefined): string | null {
   if (value === null || value === undefined) return null;
   return asString(value);
 }
 
-// Shared cron types live in CronStore.ts (the base contract); re-export them
-// here to preserve this module's public API.
 export type {
   CronTask,
   CreateCronTaskParams,
@@ -55,12 +49,6 @@ export type {
   CronStoreInitOptions,
 } from './CronStore.js';
 
-/**
- * SQLite-backed CronStore implementation
- *
- * Uses Node.js 22.5+ built-in sqlite module for zero-dependency cron storage.
- * All dates stored as INTEGER (Unix ms timestamps).
- */
 export class SQLiteCronStore extends CronStore {
   db: DatabaseSync | null;
   onTaskFire: ((task: CronTask) => Promise<void>) | null;
@@ -73,17 +61,10 @@ export class SQLiteCronStore extends CronStore {
     this.pollInterval = null;
   }
 
-  /**
-   * Initialize SQLite cron store
-   *
-   * @param dbPath - Path to SQLite database file
-   * @param options - Initialization options
-   */
   async init(dbPath: string, options: CronStoreInitOptions = {}): Promise<void> {
     this.db = new DatabaseSync(dbPath);
     this.onTaskFire = options.onTaskFire || null;
 
-    // Create table first
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS cron_tasks (
         id TEXT PRIMARY KEY,
@@ -107,21 +88,18 @@ export class SQLiteCronStore extends CronStore {
       CREATE INDEX IF NOT EXISTS idx_cron_session ON cron_tasks(session_id);
     `);
 
-    // Migration: goal_id → task_id column
     const cols = this.db.prepare("PRAGMA table_info(cron_tasks)").all();
     if (cols.some(c => c.name === 'goal_id') && !cols.some(c => c.name === 'task_id')) {
       console.log('[cron] migrating goal_id column to task_id...');
       this.db.exec('ALTER TABLE cron_tasks RENAME COLUMN goal_id TO task_id');
     }
 
-    // Migration: goal_step → task_step task type
     const goalStepCount = this.db.prepare("SELECT COUNT(*) as cnt FROM cron_tasks WHERE name = 'goal_step'").get();
     if (goalStepCount && asNumber(goalStepCount.cnt) > 0) {
       console.log('[cron] migrating goal_step tasks to task_step...');
       this.db.prepare("UPDATE cron_tasks SET name = 'task_step' WHERE name = 'goal_step'").run();
     }
 
-    // Deduplicate existing heartbeats before relying on the unique index
     const dupes = this.db.prepare(`
       SELECT user_id, GROUP_CONCAT(id) as ids, COUNT(*) as cnt
       FROM cron_tasks
@@ -135,7 +113,6 @@ export class SQLiteCronStore extends CronStore {
       let cleaned = 0;
       for (const row of dupes) {
         const ids = asString(row.ids).split(',');
-        // Keep first (newest by insertion order), remove rest
         for (let i = 1; i < ids.length; i++) {
           const id = ids[i];
           if (id === undefined) continue;
@@ -146,9 +123,7 @@ export class SQLiteCronStore extends CronStore {
       console.log(`[cron] cleaned up ${cleaned} duplicate heartbeat(s) for ${dupes.length} user(s)`);
     }
 
-    // Start polling every 30 seconds
     this.pollInterval = setInterval(() => this.checkTasks(), 30 * 1000);
-    // Also check immediately on startup
     await this.checkTasks();
 
     console.log('[cron] initialized with SQLite, polling every 30s');
@@ -158,9 +133,6 @@ export class SQLiteCronStore extends CronStore {
     if (this.pollInterval) clearInterval(this.pollInterval);
   }
 
-  /**
-   * Check for tasks that are due and fire them
-   */
   async checkTasks(): Promise<void> {
     if (!this.db || !this.onTaskFire) return;
     const db = this.db;
@@ -178,12 +150,10 @@ export class SQLiteCronStore extends CronStore {
       const heartbeats = dueTasks.filter(t => t.name === 'heartbeat');
       const others = dueTasks.filter(t => t.name !== 'heartbeat');
 
-      /** Process a single task: update schedule first, then fire callback */
       const processTask = async (task: Record<string, SQLOutputValue>): Promise<void> => {
         const mapped = this._rowToTask(task);
         const taskId = asString(task.id);
         const intervalMs = asNumberOrNull(task.interval_ms);
-        // Update schedule BEFORE firing to prevent duplicate picks during long-running callbacks
         if (task.recurring && intervalMs) {
           db.prepare(
             'UPDATE cron_tasks SET next_run_at = ? WHERE id = ?'
@@ -195,7 +165,6 @@ export class SQLiteCronStore extends CronStore {
         }
         try {
           await onTaskFire(mapped);
-          // Update last_run_at after successful completion
           db.prepare(
             'UPDATE cron_tasks SET last_run_at = ? WHERE id = ?'
           ).run(Date.now(), taskId);
@@ -204,7 +173,6 @@ export class SQLiteCronStore extends CronStore {
         }
       };
 
-      // Heartbeats run in parallel with a concurrency cap
       if (heartbeats.length > 0) {
         console.log(`[cron] firing ${heartbeats.length} heartbeat(s) (concurrency: ${HEARTBEAT_CONCURRENCY})`);
         await runWithConcurrency(
@@ -213,7 +181,6 @@ export class SQLiteCronStore extends CronStore {
         );
       }
 
-      // Other tasks run sequentially
       for (const task of others) {
         await processTask(task);
       }
@@ -222,11 +189,6 @@ export class SQLiteCronStore extends CronStore {
     }
   }
 
-  /**
-   * Create a scheduled task
-   *
-   * @returns Created task
-   */
   async createTask({ name, prompt, sessionId, userId, runAt, intervalMs, recurring, taskId }: CreateCronTaskParams): Promise<CronTask> {
     if (!this.db) throw new Error('Cron not initialized. Call init() first.');
     const id = crypto.randomUUID();
@@ -264,12 +226,6 @@ export class SQLiteCronStore extends CronStore {
     };
   }
 
-  /**
-   * List tasks for a session
-   *
-   * @param sessionId - Session ID to filter by
-   * @returns Task list sorted by next run time
-   */
   async listTasks(sessionId?: string): Promise<CronTask[]> {
     if (!this.db) throw new Error('Cron not initialized. Call init() first.');
     const rows = this.db.prepare(
@@ -279,13 +235,6 @@ export class SQLiteCronStore extends CronStore {
     return rows.map(r => this._rowToTask(r));
   }
 
-  /**
-   * List tasks for multiple session IDs
-   *
-   * @param sessionIds - Array of session IDs
-   * @param userId - Optional user ID filter
-   * @returns Task list sorted by next run time
-   */
   async listTasksBySessionIds(sessionIds: string[], userId: string | null = null): Promise<CronTask[]> {
     if (!this.db || sessionIds.length === 0) return [];
 
@@ -307,12 +256,6 @@ export class SQLiteCronStore extends CronStore {
     return rows.map(r => this._rowToTask(r));
   }
 
-  /**
-   * Get a task by ID
-   *
-   * @param id - Task ID
-   * @returns Task or null
-   */
   async getTask(id: string): Promise<CronTask | null> {
     if (!this.db) throw new Error('Cron not initialized. Call init() first.');
     const row = this.db.prepare('SELECT * FROM cron_tasks WHERE id = ?').get(id);
@@ -320,25 +263,12 @@ export class SQLiteCronStore extends CronStore {
     return this._rowToTask(row);
   }
 
-  /**
-   * Delete a task by ID
-   *
-   * @param id - Task ID
-   * @returns Delete result with changes count
-   */
   async deleteTask(id: string): Promise<{ deletedCount: number | bigint }> {
     if (!this.db) throw new Error('Cron not initialized. Call init() first.');
     const result = this.db.prepare('DELETE FROM cron_tasks WHERE id = ?').run(id);
     return { deletedCount: result.changes };
   }
 
-  /**
-   * Toggle a task's enabled state
-   *
-   * @param id - Task ID
-   * @param enabled - New enabled state
-   * @returns Update result
-   */
   async toggleTask(id: string, enabled: boolean): Promise<{ modifiedCount: number | bigint }> {
     if (!this.db) throw new Error('Cron not initialized. Call init() first.');
     const result = this.db.prepare(
@@ -347,13 +277,6 @@ export class SQLiteCronStore extends CronStore {
     return { modifiedCount: result.changes };
   }
 
-  /**
-   * Update a task's details
-   *
-   * @param id - Task ID
-   * @param updates - Fields to update
-   * @returns Update result
-   */
   async updateTask(id: string, updates: CronTaskUpdates): Promise<{ modifiedCount: number | bigint }> {
     if (!this.db) throw new Error('Cron not initialized. Call init() first.');
     const sets: string[] = [];
@@ -374,13 +297,6 @@ export class SQLiteCronStore extends CronStore {
     return { modifiedCount: result.changes };
   }
 
-  /**
-   * Ensure a single recurring heartbeat exists for a user.
-   * Uses INSERT OR IGNORE for atomicity against the unique partial index.
-   *
-   * @param userId - User ID
-   * @returns Created task or null if already exists
-   */
   async ensureHeartbeat(userId: string): Promise<{ id: string } | null> {
     if (!this.db || !userId) {
       console.log(`[cron] ensureHeartbeat skipped: db=${!!this.db}, userId=${userId}`);
@@ -401,7 +317,6 @@ export class SQLiteCronStore extends CronStore {
       return { id };
     }
 
-    // Auto-update stale prompt
     const existing = this.db.prepare(
       "SELECT id, prompt FROM cron_tasks WHERE user_id = ? AND name = 'heartbeat' AND enabled = 1"
     ).get(userId);
@@ -414,12 +329,6 @@ export class SQLiteCronStore extends CronStore {
     return null;
   }
 
-  /**
-   * Get heartbeat status for a user
-   *
-   * @param userId - User ID
-   * @returns Heartbeat info or null
-   */
   async getHeartbeatStatus(userId: string): Promise<HeartbeatStatus | null> {
     if (!this.db || !userId) return null;
 
@@ -440,12 +349,6 @@ export class SQLiteCronStore extends CronStore {
     };
   }
 
-  /**
-   * Delete existing heartbeat(s) and create a fresh one
-   *
-   * @param userId - User ID
-   * @returns New heartbeat task or null
-   */
   async resetHeartbeat(userId: string): Promise<CronTask | null> {
     if (!this.db || !userId) return null;
 
@@ -458,17 +361,10 @@ export class SQLiteCronStore extends CronStore {
 
     if (!result) return null;
 
-    // Return the full task object for the newly created heartbeat
     const row = this.db.prepare('SELECT * FROM cron_tasks WHERE id = ?').get(result.id);
     return row ? this._rowToTask(row) : null;
   }
 
-  /**
-   * Manually trigger the heartbeat task immediately
-   *
-   * @param userId - User ID
-   * @returns True if heartbeat was fired
-   */
   async triggerHeartbeatNow(userId: string): Promise<boolean> {
     if (!this.db || !userId || !this.onTaskFire) return false;
 
@@ -494,11 +390,6 @@ export class SQLiteCronStore extends CronStore {
     }
   }
 
-  /**
-   * Convert a raw SQLite row to a task object with JS types
-   *
-   * @private
-   */
   _rowToTask(row: Record<string, SQLOutputValue>): CronTask {
     const lastRun = asNumberOrNull(row.last_run_at);
     return {
@@ -517,9 +408,6 @@ export class SQLiteCronStore extends CronStore {
     };
   }
 
-  /**
-   * Close the database connection and checkpoint WAL.
-   */
   close(): void {
     this.stop();
     if (this.db) {
@@ -535,5 +423,4 @@ export class SQLiteCronStore extends CronStore {
   }
 }
 
-// Re-export utility functions for tool definitions
 export { parseInterval, HEARTBEAT_INTERVAL_MS, HEARTBEAT_PROMPT } from './cron_constants.js';

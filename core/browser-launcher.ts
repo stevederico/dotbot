@@ -1,6 +1,3 @@
-// core/browser-launcher.js
-// Browser launcher and downloader for CDP automation.
-// Downloads Chrome for Testing on first use, zero npm dependencies.
 
 import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, createWriteStream, rmSync, chmodSync } from 'node:fs';
@@ -9,7 +6,6 @@ import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 
-/** Result of launchBrowser(). */
 export interface LaunchedBrowser {
   process: ChildProcess;
   port: number;
@@ -17,17 +13,12 @@ export interface LaunchedBrowser {
   userDataDir: string;
 }
 
-/** Options accepted by launchBrowser(). */
 export interface LaunchBrowserOptions {
-  /** Override Chromium binary path. */
   chromePath?: string;
-  /** Debugging port (auto-assigned if not specified). */
   port?: number;
-  /** User data directory. */
   userDataDir?: string;
 }
 
-// Chrome for Testing version (stable channel)
 const CHROME_VERSION = '131.0.6778.204';
 
 const DOWNLOAD_URLS: Record<string, string> = {
@@ -39,10 +30,6 @@ const DOWNLOAD_URLS: Record<string, string> = {
 
 const BROWSER_DIR = join(homedir(), '.dotbot', 'browsers');
 
-/**
- * Get the expected Chrome executable path for this platform.
- * @returns Path to Chrome executable
- */
 function getChromePath(): string {
   const plat = platform();
   const arch = process.arch;
@@ -59,10 +46,6 @@ function getChromePath(): string {
   throw new Error(`Unsupported platform: ${plat}`);
 }
 
-/**
- * Get the download URL for this platform.
- * @returns Download URL
- */
 function getDownloadUrl(): string | undefined {
   const plat = platform();
   const arch = process.arch;
@@ -74,10 +57,6 @@ function getDownloadUrl(): string | undefined {
   return DOWNLOAD_URLS[plat];
 }
 
-/**
- * Download and extract Chrome for Testing.
- * @returns Path to Chrome executable
- */
 async function downloadChrome(): Promise<string> {
   const url = getDownloadUrl();
   if (!url) {
@@ -90,7 +69,6 @@ async function downloadChrome(): Promise<string> {
 
   const zipPath = join(BROWSER_DIR, 'chrome.zip');
 
-  // Download zip file
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to download Chrome: ${response.status}`);
@@ -105,7 +83,6 @@ async function downloadChrome(): Promise<string> {
 
   console.log('[browser] Extracting Chrome...');
 
-  // Extract using system unzip (available on all platforms)
   try {
     execSync(`unzip -o -q "${zipPath}" -d "${BROWSER_DIR}"`, { stdio: 'pipe' });
   } catch (err) {
@@ -113,12 +90,10 @@ async function downloadChrome(): Promise<string> {
     throw new Error(`Failed to extract Chrome: ${message}`);
   }
 
-  // Clean up zip file
   rmSync(zipPath, { force: true });
 
   const chromePath = getChromePath();
 
-  // Make executable on Unix
   if (platform() !== 'win32') {
     chmodSync(chromePath, 0o755);
   }
@@ -127,10 +102,6 @@ async function downloadChrome(): Promise<string> {
   return chromePath;
 }
 
-/**
- * Ensure Chrome is available, downloading if necessary.
- * @returns Path to Chrome executable
- */
 export async function ensureBrowser(): Promise<string> {
   const chromePath = getChromePath();
 
@@ -141,10 +112,6 @@ export async function ensureBrowser(): Promise<string> {
   return downloadChrome();
 }
 
-/**
- * Find a free port for Chrome debugging.
- * @returns Available port number
- */
 async function findFreePort(): Promise<number> {
   const { createServer } = await import('node:net');
 
@@ -159,20 +126,6 @@ async function findFreePort(): Promise<number> {
   });
 }
 
-/**
- * Launch Chrome with remote debugging enabled.
- *
- * Options can be overridden by env vars (lower precedence than explicit options):
- *   DOTBOT_CHROME_PATH         path to a Chromium-family binary (Chrome, Brave, Edge, Arc)
- *   DOTBOT_BROWSER_PORT        remote debugging port
- *   DOTBOT_BROWSER_USER_DATA_DIR  persistent user-data dir (preserves cookies/logins)
- *
- * When DOTBOT_CHROME_PATH is set the process launches headed (no headless flags) so
- * the user can see and interact with the window — required for first-time login flows
- * on sites the agent will later automate.
- *
- * @param options - Launch options
- */
 export async function launchBrowser(options: LaunchBrowserOptions = {}): Promise<LaunchedBrowser> {
   const envChromePath = process.env.DOTBOT_CHROME_PATH;
   const chromePath = options.chromePath
@@ -185,9 +138,6 @@ export async function launchBrowser(options: LaunchBrowserOptions = {}): Promise
 
   mkdirSync(userDataDir, { recursive: true });
 
-  // When the caller points us at a real installed browser we run headed (cookies,
-  // logins, visible window). The bundled chrome-headless-shell binary is headless
-  // by design and ignores these flags.
   const headed = !chromePath.includes('chrome-headless-shell');
   const args = headed
     ? [
@@ -215,7 +165,6 @@ export async function launchBrowser(options: LaunchBrowserOptions = {}): Promise
     detached: false
   });
 
-  // Wait for DevTools to be ready
   const wsUrl = await waitForDevTools(port, 10000);
 
   return {
@@ -226,12 +175,6 @@ export async function launchBrowser(options: LaunchBrowserOptions = {}): Promise
   };
 }
 
-/**
- * Wait for Chrome DevTools to be ready and return WebSocket URL.
- * @param port - Debugging port
- * @param timeout - Timeout in ms
- * @returns WebSocket debugger URL
- */
 async function waitForDevTools(port: number, timeout = 10000): Promise<string> {
   const start = Date.now();
   const url = `http://127.0.0.1:${port}/json/version`;
@@ -252,7 +195,6 @@ async function waitForDevTools(port: number, timeout = 10000): Promise<string> {
         }
       }
     } catch {
-      // Chrome not ready yet
     }
     await new Promise(r => setTimeout(r, 100));
   }
@@ -260,13 +202,7 @@ async function waitForDevTools(port: number, timeout = 10000): Promise<string> {
   throw new Error('Chrome DevTools did not start in time');
 }
 
-/**
- * Create a new browser context (tab) via CDP.
- * @param wsUrl - Browser WebSocket URL
- * @returns Target WebSocket URL for the new context
- */
 export async function createBrowserContext(wsUrl: string): Promise<string> {
-  // Connect to browser endpoint to create new target.
   // Chromium >=92 requires PUT here (was GET before — CSRF mitigation), so try
   // PUT first and fall back to GET for older builds / chrome-headless-shell.
   const port = new URL(wsUrl).port;
@@ -290,10 +226,6 @@ export async function createBrowserContext(wsUrl: string): Promise<string> {
   return targetWsUrl;
 }
 
-/**
- * Close a browser context (tab) via CDP.
- * @param targetWsUrl - Target WebSocket URL
- */
 export async function closeBrowserContext(targetWsUrl: string): Promise<void> {
   const url = new URL(targetWsUrl);
   const port = url.port;
@@ -302,10 +234,6 @@ export async function closeBrowserContext(targetWsUrl: string): Promise<void> {
   await fetch(`http://127.0.0.1:${port}/json/close/${targetId}`);
 }
 
-/**
- * Kill the browser process.
- * @param proc - Browser process
- */
 export function killBrowser(proc: ChildProcess): void {
   if (proc && !proc.killed) {
     proc.kill('SIGTERM');

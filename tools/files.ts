@@ -1,6 +1,3 @@
-/**
- * File system tools for user's virtual MongoDB filesystem
- */
 
 import type {
   ToolDefinition,
@@ -8,7 +5,6 @@ import type {
 } from "../types.js";
 
 export const fileTools: ToolDefinition[] = [
-  // ── File Read ──
   {
     name: "dot_file_read",
     description:
@@ -46,7 +42,6 @@ export const fileTools: ToolDefinition[] = [
     },
   },
 
-  // ── File Write ──
   {
     name: "dot_file_write",
     description:
@@ -96,7 +91,6 @@ export const fileTools: ToolDefinition[] = [
     },
   },
 
-  // ── File List ──
   {
     name: "dot_file_list",
     description: "List files and folders in a directory of the user's virtual filesystem.",
@@ -126,7 +120,6 @@ export const fileTools: ToolDefinition[] = [
     },
   },
 
-  // ── File Delete ──
   {
     name: "dot_file_delete",
     description: "Delete a file or folder from the user's virtual filesystem.",
@@ -153,7 +146,6 @@ export const fileTools: ToolDefinition[] = [
     },
   },
 
-  // ── File Move/Rename ──
   {
     name: "dot_file_move",
     description: "Move or rename a file in the user's virtual filesystem.",
@@ -191,7 +183,6 @@ export const fileTools: ToolDefinition[] = [
     },
   },
 
-  // ── Folder Create ──
   {
     name: "dot_folder_create",
     description: "Create a new folder in the user's virtual filesystem.",

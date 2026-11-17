@@ -3,14 +3,12 @@ import { DatabaseSync } from 'node:sqlite';
 import type { SQLInputValue, SQLOutputValue } from 'node:sqlite';
 import { TaskStore } from './TaskStore.js';
 
-/** Coerce a raw SQLite cell to a string. */
 function asString(value: SQLOutputValue | undefined): string {
   if (typeof value === 'string') return value;
   if (value === null || value === undefined) return '';
   return String(value);
 }
 
-/** Coerce a raw SQLite cell to a number. */
 function asNumber(value: SQLOutputValue | undefined): number {
   if (typeof value === 'number') return value;
   if (typeof value === 'bigint') return Number(value);
@@ -18,13 +16,11 @@ function asNumber(value: SQLOutputValue | undefined): number {
   return 0;
 }
 
-/** Coerce a raw SQLite cell to a number or null. */
 function asNumberOrNull(value: SQLOutputValue | undefined): number | null {
   if (value === null || value === undefined) return null;
   return asNumber(value);
 }
 
-/** Parse a JSON string into a TaskStep array, returning [] on failure. */
 function parseSteps(text: string): TaskStep[] {
   try {
     const parsed: unknown = JSON.parse(text);
@@ -32,12 +28,10 @@ function parseSteps(text: string): TaskStep[] {
       return parsed.map((item) => normalizeStep(item));
     }
   } catch {
-    // fall through
   }
   return [];
 }
 
-/** Normalize an arbitrary step input (string or object) into a TaskStep. */
 function normalizeStep(step: unknown): TaskStep {
   if (typeof step === 'string') {
     return {
@@ -63,7 +57,6 @@ function normalizeStep(step: unknown): TaskStep {
   };
 }
 
-/** A normalized task step. */
 export interface TaskStep {
   text: string;
   action: string;
@@ -73,7 +66,6 @@ export interface TaskStep {
   completedAt: unknown;
 }
 
-/** A raw step input accepted by createTask(). */
 export interface TaskStepInput {
   text?: string;
   description?: string;
@@ -84,7 +76,6 @@ export interface TaskStepInput {
   completedAt?: unknown;
 }
 
-/** A task document with JS-native types. */
 export interface TaskDoc {
   id: string;
   userId: string;
@@ -102,7 +93,6 @@ export interface TaskDoc {
   lastWorkedAt: number | null;
 }
 
-/** Parameters for createTask(). */
 export interface CreateTaskParams {
   userId: string;
   description: string;
@@ -113,14 +103,12 @@ export interface CreateTaskParams {
   mode?: string;
 }
 
-/** Optional filters for getTasks(). */
 export interface TaskFilters {
   status?: string;
   category?: string;
   priority?: string;
 }
 
-/** Fields accepted by updateTask(). */
 export interface TaskUpdates {
   description?: string;
   steps?: Array<string | TaskStepInput>;
@@ -133,7 +121,6 @@ export interface TaskUpdates {
   lastWorkedAt?: number | null;
 }
 
-/** Aggregate task statistics for a user. */
 export interface TaskStats {
   total: number;
   pending: number;
@@ -144,12 +131,6 @@ export interface TaskStats {
   overdue: number;
 }
 
-/**
- * SQLite-backed TaskStore implementation
- *
- * Uses Node.js 22.5+ built-in sqlite module for zero-dependency task storage.
- * Dates stored as INTEGER (Unix ms), steps as JSON TEXT column.
- */
 export class SQLiteTaskStore extends TaskStore<
   TaskDoc,
   CreateTaskParams,
@@ -166,15 +147,9 @@ export class SQLiteTaskStore extends TaskStore<
     this.db = null;
   }
 
-  /**
-   * Initialize SQLite task store
-   *
-   * @param dbPath - Path to SQLite database file
-   */
   async init(dbPath: string): Promise<void> {
     this.db = new DatabaseSync(dbPath);
 
-    // Migration: goals → tasks table
     const goalsExists = this.db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='goals'"
     ).get();
@@ -185,7 +160,6 @@ export class SQLiteTaskStore extends TaskStore<
     if (goalsExists && !tasksExists) {
       console.log('[tasks] migrating goals table to tasks...');
       this.db.exec('ALTER TABLE goals RENAME TO tasks');
-      // Also rename indexes
       this.db.exec('DROP INDEX IF EXISTS idx_goals_user_status');
       this.db.exec('DROP INDEX IF EXISTS idx_goals_user_category');
       this.db.exec('DROP INDEX IF EXISTS idx_goals_user_priority');
@@ -219,11 +193,6 @@ export class SQLiteTaskStore extends TaskStore<
     console.log('[tasks] SQLiteTaskStore initialized');
   }
 
-  /**
-   * Create a new task
-   *
-   * @returns Created task document
-   */
   async createTask({ userId, description, steps = [], category = 'general', priority = 'medium', deadline = null, mode = 'auto' }: CreateTaskParams): Promise<TaskDoc> {
     if (!this.db) throw new Error('Tasks not initialized. Call init() first.');
 
@@ -291,13 +260,6 @@ export class SQLiteTaskStore extends TaskStore<
     return task;
   }
 
-  /**
-   * Get tasks for a user, optionally filtered by status/category/priority
-   *
-   * @param userId - User ID
-   * @param filters - Optional filters
-   * @returns Task list with computed progress
-   */
   async getTasks(userId: string, filters: TaskFilters = {}): Promise<TaskDoc[]> {
     if (!this.db) throw new Error('Tasks not initialized. Call init() first.');
 
@@ -329,13 +291,6 @@ export class SQLiteTaskStore extends TaskStore<
     });
   }
 
-  /**
-   * Get a single task by ID
-   *
-   * @param userId - User ID
-   * @param taskId - Task UUID
-   * @returns Task document or null
-   */
   async getTask(userId: string, taskId: string): Promise<TaskDoc | null> {
     if (!this.db) throw new Error('Tasks not initialized. Call init() first.');
 
@@ -349,14 +304,6 @@ export class SQLiteTaskStore extends TaskStore<
     return task;
   }
 
-  /**
-   * Update a task with allowed fields
-   *
-   * @param userId - User ID
-   * @param taskId - Task UUID
-   * @param updates - Fields to update
-   * @returns Result with changes count
-   */
   async updateTask(userId: string, taskId: string, updates: TaskUpdates): Promise<{ changes: number | bigint }> {
     if (!this.db) throw new Error('Tasks not initialized. Call init() first.');
 
@@ -365,7 +312,6 @@ export class SQLiteTaskStore extends TaskStore<
       'mode', 'status', 'currentStep', 'lastWorkedAt'
     ];
 
-    // Map camelCase to snake_case for SQL columns
     const fieldMap: Record<string, string> = {
       description: 'description',
       steps: 'steps',
@@ -413,13 +359,6 @@ export class SQLiteTaskStore extends TaskStore<
     return { changes: result.changes };
   }
 
-  /**
-   * Delete a task
-   *
-   * @param userId - User ID
-   * @param taskId - Task UUID
-   * @returns Result with deletedCount
-   */
   async deleteTask(userId: string, taskId: string): Promise<{ deletedCount: number | bigint }> {
     if (!this.db) throw new Error('Tasks not initialized. Call init() first.');
 
@@ -429,13 +368,6 @@ export class SQLiteTaskStore extends TaskStore<
     return { deletedCount: result.changes };
   }
 
-  /**
-   * Search tasks by description or step text (case-insensitive LIKE)
-   *
-   * @param userId - User ID
-   * @param query - Search text
-   * @returns Matching tasks with computed progress
-   */
   async searchTasks(userId: string, query: string): Promise<TaskDoc[]> {
     if (!this.db) throw new Error('Tasks not initialized. Call init() first.');
 
@@ -455,12 +387,6 @@ export class SQLiteTaskStore extends TaskStore<
     });
   }
 
-  /**
-   * Get aggregate task statistics for a user
-   *
-   * @param userId - User ID
-   * @returns Stats object with totals, breakdowns, and overdue count
-   */
   async getTaskStats(userId: string): Promise<TaskStats> {
     if (!this.db) throw new Error('Tasks not initialized. Call init() first.');
 
@@ -494,11 +420,6 @@ export class SQLiteTaskStore extends TaskStore<
     return stats;
   }
 
-  /**
-   * Convert SQLite row (snake_case) to task object (camelCase)
-   *
-   * @private
-   */
   _rowToTask(row: Record<string, SQLOutputValue>): TaskDoc {
     return {
       id: asString(row.id),
@@ -518,34 +439,19 @@ export class SQLiteTaskStore extends TaskStore<
     };
   }
 
-  /**
-   * Calculate progress percentage from a task object
-   * @private
-   * @returns Progress 0-100
-   */
   _calculateProgress(task: TaskDoc): number {
     return this._calculateProgressFromSteps(task.steps || []);
   }
 
-  /**
-   * Calculate progress percentage from a steps array
-   * @private
-   * @returns Progress 0-100
-   */
   _calculateProgressFromSteps(steps: Array<string | TaskStepInput | TaskStep>): number {
     if (!steps || steps.length === 0) return 0;
     const doneCount = steps.filter(s => typeof s !== 'string' && s.done).length;
     return Math.round((doneCount / steps.length) * 100);
   }
 
-  /**
-   * Close the database connection and checkpoint WAL.
-   * Should be called on shutdown to ensure all changes are persisted.
-   */
   close(): void {
     if (this.db) {
       try {
-        // Force WAL checkpoint before closing
         this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
         this.db.close();
         this.db = null;

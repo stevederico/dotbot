@@ -1,28 +1,6 @@
-/**
- * SSE Event Schema Definitions
- *
- * All events emitted by the agent loop conform to these schemas.
- * Provider-specific differences are normalized before emission.
- *
- * The event interfaces (TextDeltaEvent, ThinkingEvent, ToolStartEvent,
- * ToolResultEvent, ToolErrorEvent, DoneEvent, MaxIterationsEvent, ErrorEvent,
- * StatsEvent, FollowupEvent, ImageEvent, CompactionEvent) and the AgentEvent
- * union live in the shared types module.
- */
 
 import type { StatsEvent, RawProviderStats } from '../types.js';
 
-/**
- * Validate an event against the schema.
- *
- * Accepts an unknown value so callers may pass arbitrary payloads; narrows
- * structurally before reading discriminated fields.
- *
- * @param event - Event to validate
- * @returns True if valid
- * @throws If validation fails
- */
-/** Read a property off an object value as unknown, without a type assertion. */
 function prop(obj: object, key: string): unknown {
   return Reflect.get(obj, key);
 }
@@ -136,7 +114,6 @@ export function validateEvent(event: unknown): boolean {
       break;
 
     case 'compaction':
-      // Compaction events don't have strict schema requirements
       break;
 
     case 'image':
@@ -155,21 +132,12 @@ export function validateEvent(event: unknown): boolean {
   return true;
 }
 
-/**
- * Normalize a stats event from provider-specific format to standard format
- * @param stats - Raw stats from provider
- * @param provider - Provider ID ('anthropic', 'openai', 'xai', 'ollama')
- * @returns Standardized stats event
- */
 export function normalizeStatsEvent(
   stats: RawProviderStats,
   provider: string,
 ): StatsEvent {
   const isAnthropic = provider === 'anthropic';
 
-  // Preserve original runtime behavior: when a provider omits a token field
-  // the value is left undefined (not coerced). The local fallback is `?? 0`
-  // is intentionally NOT applied so the wire payload matches the legacy JS.
   const inputTokens = isAnthropic ? stats.input_tokens : stats.prompt_tokens;
   const outputTokens = isAnthropic
     ? stats.output_tokens
@@ -183,12 +151,6 @@ export function normalizeStatsEvent(
   };
 }
 
-/**
- * Coerce a possibly-undefined token count to a number for the typed
- * StatsEvent shape. Defaults missing values to 0 (the prior JS shipped
- * `undefined`, which JSON-serializes to an absent field; 0 is the closest
- * type-safe equivalent without an `as` cast or loosening StatsEvent).
- */
 function numberOrZero(value: number | undefined): number {
   return typeof value === 'number' ? value : 0;
 }

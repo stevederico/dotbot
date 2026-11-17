@@ -1,35 +1,22 @@
-/**
- * App Generation Tools
- *
- * Generate React components from natural language prompts using AI providers.
- * Returns executable JavaScript code using React.createElement() (no JSX).
- */
 
 import { AI_PROVIDERS } from '../utils/providers.js';
 import type { Message, ToolDefinition } from '../types.js';
 
-/** Window dimensions for a generated desktop app. */
 interface WindowSize {
   width: number;
   height: number;
 }
 
-/** Result of cleaning raw generated code. */
 interface CleanedCode {
   code: string;
   windowSize: WindowSize;
 }
 
-/** Result of validating generated code. */
 interface ValidationResult {
   valid: boolean;
   error?: string;
 }
 
-/**
- * System prompt for app generation.
- * Instructs AI to generate React components with specific constraints.
- */
 export const APP_GENERATION_PROMPT = `Create a React component named "App" for a desktop window.
 
 CRITICAL: Use React.createElement() - NO JSX allowed. JSX like <div> will fail.
@@ -66,17 +53,11 @@ const App = () => {
   );
 };`;
 
-/**
- * Clean generated code by removing markdown, normalizing hooks, extracting window size.
- *
- * @param code - Raw AI-generated code
- */
 export function cleanGeneratedCode(code: string): CleanedCode {
   if (!code) return { code: '', windowSize: { width: 800, height: 650 } };
 
   let cleanCode = code
     .replace(/```(?:javascript|jsx|js|react|typescript|tsx)?/gi, '')
-    // Remove HTML document wrappers
     .replace(/<html[^>]*>[\s\S]*<\/html>/gi, '')
     .replace(/<head[^>]*>[\s\S]*<\/head>/gi, '')
     .replace(/<body[^>]*>([\s\S]*)<\/body>/gi, '$1')
@@ -85,7 +66,6 @@ export function cleanGeneratedCode(code: string): CleanedCode {
     .replace(/<!DOCTYPE[^>]*>/gi, '')
     .trim();
 
-  // Find component start
   const componentPatterns = [
     /const\s+App\s*=/,
     /function\s+App\s*\(/,
@@ -101,7 +81,6 @@ export function cleanGeneratedCode(code: string): CleanedCode {
     }
   }
 
-  // Normalize React hooks (remove React. prefix)
   cleanCode = cleanCode
     .replace(/React\.useState/g, 'useState')
     .replace(/React\.useEffect/g, 'useEffect')
@@ -109,13 +88,11 @@ export function cleanGeneratedCode(code: string): CleanedCode {
     .replace(/React\.useCallback/g, 'useCallback')
     .replace(/React\.useMemo/g, 'useMemo')
     .replace(/React\.useContext/g, 'useContext')
-    // Remove full-screen classes that break windowed layout
     .replace(/min-h-screen/g, '')
     .replace(/h-screen/g, '')
     .replace(/w-screen/g, '')
     .replace(/fixed\s+inset-0/g, '');
 
-  // Extract window size directive
   const windowMatch = cleanCode.match(/\/\/\s*@window\s+(\d+)x(\d+)/i);
   let windowSize: WindowSize = { width: 800, height: 650 };
 
@@ -130,11 +107,6 @@ export function cleanGeneratedCode(code: string): CleanedCode {
   return { code: cleanCode, windowSize };
 }
 
-/**
- * Validate that code looks like a valid React component.
- *
- * @param code - Generated code to validate
- */
 export function validateGeneratedCode(code: unknown): ValidationResult {
   if (!code || typeof code !== 'string') {
     return { valid: false, error: 'Generated code is empty or invalid' };
@@ -153,22 +125,13 @@ export function validateGeneratedCode(code: unknown): ValidationResult {
   return { valid: true };
 }
 
-/**
- * Extract app name from prompt (first 2-3 words).
- *
- * @param prompt - User prompt
- */
 export function extractAppName(prompt: string): string {
   const words = prompt.trim().split(/\s+/);
-  // Skip action words like "create", "build", "make"
   const actionWords = ['create', 'build', 'make', 'generate', 'write', 'design', 'a', 'an', 'the'];
   const filtered = words.filter(w => !actionWords.includes(w.toLowerCase()));
   return filtered.slice(0, 2).join(' ') || 'Generated App';
 }
 
-/**
- * App generation tools array
- */
 export const appgenTools: ToolDefinition[] = [
   {
     name: 'dot_app_generate',
@@ -201,13 +164,11 @@ export const appgenTools: ToolDefinition[] = [
         return JSON.stringify({ success: false, error: 'Prompt is required' });
       }
 
-      // Get provider config
       const provider = AI_PROVIDERS[providerId];
       if (!provider) {
         return JSON.stringify({ success: false, error: `Unknown provider: ${providerId}` });
       }
 
-      // Get API key from context.providers
       const apiKey = context?.providers?.[providerId]?.apiKey;
       if (!provider.local && !apiKey) {
         return JSON.stringify({ success: false, error: `No API key configured for ${provider.name}` });
@@ -222,11 +183,9 @@ export const appgenTools: ToolDefinition[] = [
         : [{ role: 'system', content: APP_GENERATION_PROMPT }, { role: 'user', content: `Create a desktop app: ${prompt}` }];
 
       try {
-        // Make API request with 60s timeout
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-        // Combine user signal with timeout
         if (signal) {
           signal.addEventListener('abort', () => controller.abort());
         }
@@ -258,7 +217,6 @@ export const appgenTools: ToolDefinition[] = [
           return JSON.stringify({ success: false, error: 'No code generated' });
         }
 
-        // Clean and validate code
         const { code: cleanCode, windowSize } = cleanGeneratedCode(generatedCode);
         const validation = validateGeneratedCode(cleanCode);
 
@@ -279,7 +237,6 @@ export const appgenTools: ToolDefinition[] = [
 
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
-          // Could be timeout or user cancellation
           return JSON.stringify({ success: false, error: 'Request timed out or was cancelled' });
         }
         return JSON.stringify({ success: false, error: error instanceof Error ? error.message : String(error) });
@@ -308,7 +265,6 @@ export const appgenTools: ToolDefinition[] = [
         return JSON.stringify({ valid: false, error: validation.error });
       }
 
-      // Additional syntax check - try to parse as function
       try {
         new Function('React', 'useState', 'useEffect', 'useRef', 'useCallback', 'useMemo', typeof code === 'string' ? code : String(code));
         return JSON.stringify({ valid: true });

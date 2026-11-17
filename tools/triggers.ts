@@ -1,9 +1,3 @@
-/**
- * Trigger Tools
- *
- * Event-driven agent responses. Triggers fire when specific events occur,
- * injecting prompts into the agent conversation for context-aware assistance.
- */
 
 import type {
   AgentContext,
@@ -13,12 +7,10 @@ import type {
   ToolResult,
 } from "../types.js";
 
-/** Extract a human-readable message from an unknown thrown value. */
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** A trigger record as returned by the TriggerStore. */
 interface TriggerRecord {
   id?: string;
   eventType: string;
@@ -29,18 +21,12 @@ interface TriggerRecord {
   fireCount?: number;
 }
 
-/** Write result shape shared by Mongo-style and SQLite-style adapters. */
 interface WriteResult {
   modifiedCount?: number;
   deletedCount?: number;
   changes?: number;
 }
 
-/**
- * The concrete TriggerStore method surface used by these tools. The shared
- * `TriggerStore` type in types.js is intentionally loose (index signature), so
- * we narrow it to this richer local view before calling.
- */
 interface TriggerStoreApi {
   createTrigger(trigger: Record<string, unknown>): Promise<TriggerRecord>;
   listTriggers(userId: string | undefined, filters: JsonObject): Promise<TriggerRecord[]>;
@@ -52,10 +38,6 @@ interface TriggerStoreApi {
   deleteTrigger(userId: string | undefined, triggerId: unknown): Promise<WriteResult>;
 }
 
-/**
- * Type guard narrowing the loose shared TriggerStore to the local
- * TriggerStoreApi method surface.
- */
 function isTriggerStore(store: unknown): store is TriggerStoreApi {
   if (store === null || typeof store !== "object") return false;
   const methods = ["createTrigger", "listTriggers", "toggleTrigger", "deleteTrigger"];

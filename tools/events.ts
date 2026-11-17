@@ -1,10 +1,3 @@
-/**
- * Event Analytics Tools
- *
- * Query and summarize user activity events for usage analytics.
- * Answers questions like "how many messages did I send this week?"
- * or "what tools do I use most?"
- */
 
 import type {
   AgentContext,
@@ -16,31 +9,25 @@ import type {
   ToolResult,
 } from "../types.js";
 
-/** Extract a human-readable message from an unknown thrown value. */
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** Recognized groupBy values for dot_events_summary. */
 type SummaryGroupBy = NonNullable<EventSummaryParams["groupBy"]>;
 
-/** A period/count row used when grouping by day/week/month. */
 interface PeriodCount {
   period: string;
   count: number;
 }
 
-/** Type guard for a plain (non-array) object indexable by string. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-/** Coerce an unknown value to a finite number, defaulting to 0. */
 function asCount(value: unknown): number {
   return typeof value === "number" ? value : 0;
 }
 
-/** Narrow an unknown breakdown entry to a PeriodCount row. */
 function toPeriodCount(value: unknown): PeriodCount {
   if (isRecord(value)) {
     return {
@@ -107,7 +94,6 @@ export const eventTools: ToolDefinition[] = [
             : "No events recorded yet.";
         }
 
-        // Format events for display
         return events.map((e) => {
           const iso = new Date(e.timestamp).toISOString();
           const [datePart, timePart = ""] = iso.split("T");
@@ -171,7 +157,6 @@ export const eventTools: ToolDefinition[] = [
 
         let output = `Total Events: ${asCount(summary.total)}\n\n`;
 
-        // Format breakdown based on groupBy
         const breakdown: unknown = summary.breakdown;
         if (groupBy === "type") {
           output += "By Type:\n";
@@ -189,11 +174,9 @@ export const eventTools: ToolDefinition[] = [
           }
         }
 
-        // Tool usage breakdown if available
         const toolUsage: unknown = summary.toolUsage;
         if (toolUsage !== null && typeof toolUsage === "object" && !Array.isArray(toolUsage) && Object.keys(toolUsage).length > 0) {
           output += "\nTool Usage:\n";
-          // Sort by count descending
           const sorted = Object.entries(toolUsage)
             .sort((a, b) => asCount(b[1]) - asCount(a[1]));
           for (const [tool, count] of sorted) {
@@ -209,7 +192,6 @@ export const eventTools: ToolDefinition[] = [
   },
 ];
 
-/** Type guard for the dot_events_summary groupBy enum values. */
 function isGroupBy(value: JsonValue | undefined): value is SummaryGroupBy {
   return value === "type" || value === "day" || value === "week" || value === "month";
 }

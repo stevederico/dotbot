@@ -1,7 +1,3 @@
-/**
- * Zero-dependency terminal UI for dotbot.
- * Alt-screen + raw stdin. No Ink/blessed.
- */
 
 import type { AgentContext, AgentEvent, Message, Provider, ToolDefinition } from '../types.js';
 
@@ -12,13 +8,11 @@ const CLEAR = `${ESC}[2J${ESC}[H`;
 const HIDE = `${ESC}[?25l`;
 const SHOW = `${ESC}[?25h`;
 
-/** One painted chat line (already wrapped or raw). */
 export interface TuiLine {
   kind: 'user' | 'assistant' | 'tool' | 'system' | 'error';
   text: string;
 }
 
-/** Dependencies injected by the CLI bootstrap. */
 export interface TuiDeps {
   version: string;
   providerId: string;
@@ -38,9 +32,6 @@ export interface TuiDeps {
   initialMessages?: Message[];
 }
 
-/**
- * Word-wrap text to width. Exported for tests.
- */
 export function wrapText(text: string, width: number): string[] {
   if (width < 1) width = 1;
   const out: string[] = [];
@@ -86,9 +77,6 @@ export function wrapText(text: string, width: number): string[] {
   return out.length ? out : [''];
 }
 
-/**
- * Expand logical lines into painted rows with prefixes.
- */
 export function paintRows(lines: TuiLine[], width: number): string[] {
   const rows: string[] = [];
   for (const line of lines) {
@@ -107,9 +95,6 @@ export function paintRows(lines: TuiLine[], width: number): string[] {
   return rows;
 }
 
-/**
- * Slice rows to fit the chat viewport (show bottom by default).
- */
 export function visibleRows(rows: string[], height: number, scrollUp: number): string[] {
   if (height <= 0) return [];
   const maxScroll = Math.max(0, rows.length - height);
@@ -130,9 +115,6 @@ function write(s: string): void {
   process.stdout.write(s);
 }
 
-/**
- * Run the alt-screen TUI until exit.
- */
 export async function runTui(deps: TuiDeps): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     throw new Error('dotbot tui requires an interactive TTY');
@@ -147,7 +129,6 @@ export async function runTui(deps: TuiDeps): Promise<void> {
   let busy = false;
   let closed = false;
 
-  // Seed log from prior session messages (plain text only)
   for (const m of messages) {
     if (m.role === 'user' && typeof m.content === 'string') {
       log.push({ kind: 'user', text: m.content });
@@ -159,7 +140,7 @@ export async function runTui(deps: TuiDeps): Promise<void> {
   const render = (): void => {
     const { cols, rows } = termSize();
     const headerH = 2;
-    const footerH = 3; // status + blank + input
+    const footerH = 3;
     const chatH = Math.max(3, rows - headerH - footerH);
     const painted = paintRows(log, cols);
     const view = visibleRows(painted, chatH, scrollUp);
@@ -187,7 +168,7 @@ export async function runTui(deps: TuiDeps): Promise<void> {
     closed = true;
     try {
       if (process.stdin.isTTY) process.stdin.setRawMode(false);
-    } catch { /* ok */ }
+    } catch {  }
     process.stdin.pause();
     write(LEAVE_ALT);
   };
@@ -343,7 +324,6 @@ export async function runTui(deps: TuiDeps): Promise<void> {
     const onData = (chunk: string): void => {
       if (closed) return;
 
-      // ctrl+c
       if (chunk === '\u0003') {
         process.stdin.off('data', onData);
         cleanup();
@@ -352,7 +332,6 @@ export async function runTui(deps: TuiDeps): Promise<void> {
         process.exit(0);
         return;
       }
-      // ctrl+d with empty input
       if (chunk === '\u0004' && !input) {
         process.stdin.off('data', onData);
         cleanup();
@@ -362,10 +341,8 @@ export async function runTui(deps: TuiDeps): Promise<void> {
         return;
       }
 
-      // ignore input while busy except ctrl+c already handled
       if (busy) return;
 
-      // enter
       if (chunk === '\r' || chunk === '\n') {
         const text = input;
         input = '';
@@ -380,14 +357,12 @@ export async function runTui(deps: TuiDeps): Promise<void> {
         return;
       }
 
-      // backspace
       if (chunk === '\u007f' || chunk === '\b') {
         input = input.slice(0, -1);
         render();
         return;
       }
 
-      // page up / page down (CSI sequences)
       if (chunk === `${ESC}[5~`) {
         scrollUp += 5;
         render();
@@ -399,10 +374,8 @@ export async function runTui(deps: TuiDeps): Promise<void> {
         return;
       }
 
-      // ignore other escapes
       if (chunk.startsWith(ESC)) return;
 
-      // printable (incl. paste of multi-char)
       for (const ch of chunk) {
         if (ch >= ' ' || ch === '\t') input += ch;
       }

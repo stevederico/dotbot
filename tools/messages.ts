@@ -1,13 +1,9 @@
-/**
- * Message/conversation tools
- */
 import type {
   AgentContext,
   DbConfig,
   ToolDefinition,
 } from "../types.js";
 
-/** A conversation record returned by the database manager. */
 interface Conversation {
   id?: string;
   _id?: { toString(): string };
@@ -18,7 +14,6 @@ interface Conversation {
   createdAt?: string;
 }
 
-/** A message record returned by the database manager. */
 interface MessageRecord {
   content: string;
   sender?: string;
@@ -26,11 +21,6 @@ interface MessageRecord {
   createdAt?: string | number | Date;
 }
 
-/**
- * Database manager surface used by the message tools. Modeled structurally
- * from usage here; the shared DatabaseManager interface covers the virtual
- * filesystem methods, while these cover conversations/messages.
- */
 interface MessageDatabaseManager {
   findConversations(
     dbType: string,
@@ -70,14 +60,12 @@ interface MessageDatabaseManager {
   ): Promise<MessageRecord[] | null>;
 }
 
-/** Context shape after narrowing for the message tools. */
 interface MessageContext {
   databaseManager: MessageDatabaseManager;
   dbConfig: DbConfig;
   userID: string;
 }
 
-/** Runtime guard: does the value expose the message database methods? */
 function isMessageDatabaseManager(
   value: unknown,
 ): value is MessageDatabaseManager {
@@ -91,10 +79,6 @@ function isMessageDatabaseManager(
   );
 }
 
-/**
- * Narrow an AgentContext into the message-tool context, or return null when
- * the database manager is not available.
- */
 function resolveContext(context: AgentContext): MessageContext | null {
   const dm = context.databaseManager;
   if (!isMessageDatabaseManager(dm)) return null;
@@ -106,7 +90,6 @@ function resolveContext(context: AgentContext): MessageContext | null {
   };
 }
 
-/** Extract a string error message from an unknown thrown value. */
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }

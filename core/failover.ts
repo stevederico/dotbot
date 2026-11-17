@@ -1,33 +1,26 @@
-// failover.js
-// Model failover: retry on transient errors, fall back to alternative providers.
 
 import { AI_PROVIDERS } from "../utils/providers.js";
 import type { Provider } from "../types.js";
 
-/** A built fetch request for a target provider (from buildRequest). */
 interface ProviderRequest {
   url: string;
   headers: Record<string, string>;
   body: string;
 }
 
-/** Record of a single failed provider attempt. */
 interface FailoverAttempt {
   provider: string;
   status: number;
   body: string;
 }
 
-/** Builds fetch params for a given target provider. */
 type BuildRequest = (targetProvider: Provider) => ProviderRequest;
 
-/** Optional logger with .info() and .error(). */
 interface FailoverLogger {
   info: (message: string) => void;
   error: (message: string) => void;
 }
 
-/** Options for fetchWithFailover(). */
 interface FetchWithFailoverOptions {
   provider: Provider;
   buildRequest: BuildRequest;
@@ -35,27 +28,16 @@ interface FetchWithFailoverOptions {
   logger?: FailoverLogger;
 }
 
-/** Ordered list of cloud providers to try during failover. Local providers excluded. */
 const FALLBACK_ORDER = ['xai', 'anthropic', 'openai'];
 
-/** How long (ms) a failed provider stays cooled down. */
 const COOLDOWN_MS = 5 * 60 * 1000;
 
-/** Default retry delay (ms) when Retry-After header is absent. */
 const DEFAULT_RETRY_DELAY_MS = 1500;
 
-/** HTTP status codes that warrant a retry/failover. */
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
-/** In-memory cooldown map: providerId -> expiresAt timestamp. Resets on restart. */
 const cooldownMap = new Map<string, number>();
 
-/**
- * Extract a short, PII-safe error hint from a provider error body.
- * Prefers JSON `error` / `error.message` / `message` strings (e.g. Pro relay
- * `{ "error": "free credit used" }`) so callers can open paywalls / bucket
- * telemetry. Truncates; never returns raw conversation content fields.
- */
 function extractErrorHint(body: string): string {
   if (!body || typeof body !== 'string') return '';
   const trimmed = body.trim();
@@ -75,37 +57,23 @@ function extractErrorHint(body: string): string {
       return j.message.trim().slice(0, 80);
     }
   } catch {
-    // not JSON — fall through to a bounded plain-text snippet
   }
   return trimmed.replace(/\s+/g, ' ').slice(0, 80);
 }
 
-/**
- * One attempt for FailoverError / agent messages:
- * `dottiepro(429): free credit used` or `xai(502)` when body empty.
- */
 function formatFailoverAttempt(a: FailoverAttempt): string {
   const hint = extractErrorHint(a.body || '');
   return hint ? `${a.provider}(${a.status}): ${hint}` : `${a.provider}(${a.status})`;
 }
 
-/** Full user/agent-facing summary when every provider failed. */
 function formatFailoverMessage(attempts: FailoverAttempt[]): string {
   if (!attempts.length) return 'All providers failed';
   return `All providers failed: ${attempts.map(formatFailoverAttempt).join(', ')}`;
 }
 
-/**
- * Custom error thrown when all providers (primary + fallbacks) are exhausted.
- * @extends Error
- */
 class FailoverError extends Error {
   attempts: FailoverAttempt[];
 
-  /**
-   * @param message - Error summary.
-   * @param attempts - Record of each failed attempt.
-   */
   constructor(message: string, attempts: FailoverAttempt[]) {
     super(message);
     this.name = 'FailoverError';
@@ -113,10 +81,6 @@ class FailoverError extends Error {
   }
 }
 
-/**
- * Check whether a provider is currently in cooldown.
- * @param providerId - Provider identifier (e.g. 'anthropic').
- */
 function isProviderCooledDown(providerId: string): boolean {
   const expiresAt = cooldownMap.get(providerId);
   if (!expiresAt) return false;
@@ -127,19 +91,10 @@ function isProviderCooledDown(providerId: string): boolean {
   return true;
 }
 
-/**
- * Mark a provider as failed, placing it in cooldown for COOLDOWN_MS.
- * @param providerId - Provider identifier.
- */
 function markProviderFailed(providerId: string): void {
   cooldownMap.set(providerId, Date.now() + COOLDOWN_MS);
 }
 
-/**
- * Sleep for a given duration, respecting an AbortSignal.
- * @param ms - Milliseconds to sleep.
- * @param signal - Optional abort signal.
- */
 function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     if (signal?.aborted) {
@@ -155,28 +110,11 @@ function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-/**
- * Attempt a fetch with retry and cross-provider failover.
- *
- * On retryable HTTP errors (429, 5xx): waits Retry-After or 1.5s, retries once.
- * If still failing: marks the provider cooled down, tries the next cloud provider.
- * On non-retryable errors (400, 401, 403): throws immediately (no failover).
- * On all providers exhausted: throws FailoverError with attempts array.
- *
- * @param options.provider - Primary provider config from AI_PROVIDERS.
- * @param options.buildRequest - Callback that builds fetch params for any target provider.
- * @param options.signal - Optional abort signal.
- * @param options.logger - Optional logger with .info() and .error().
- * @returns The successful HTTP response and the provider that served it.
- * @throws {FailoverError} When all providers are exhausted.
- * @throws {DOMException} When aborted via signal (name: 'AbortError').
- */
 async function fetchWithFailover(
   { provider, buildRequest, signal, logger }: FetchWithFailoverOptions,
 ): Promise<{ response: Response; activeProvider: Provider }> {
   const attempts: FailoverAttempt[] = [];
 
-  // Build ordered list: primary first, then fallbacks (skip local, skip duplicates)
   const providersToTry: Provider[] = [provider];
   for (const id of FALLBACK_ORDER) {
     if (id === provider.id) continue;
@@ -185,12 +123,10 @@ async function fetchWithFailover(
   }
 
   for (const targetProvider of providersToTry) {
-    // Skip cooled-down providers (unless it's the primary — always try primary once)
     if (targetProvider !== provider && isProviderCooledDown(targetProvider.id)) {
       continue;
     }
 
-    // Check that the target provider has an API key configured
     if (targetProvider.envKey && !process.env[targetProvider.envKey]) {
       continue;
     }
@@ -199,7 +135,6 @@ async function fetchWithFailover(
     let lastStatus = 0;
     let lastBody = '';
 
-    // Up to 2 attempts per provider (initial + 1 retry)
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const response = await fetch(url, {
@@ -216,7 +151,6 @@ async function fetchWithFailover(
         lastStatus = response.status;
         lastBody = await response.text();
 
-        // Non-retryable — throw immediately, no failover
         if (!RETRYABLE_STATUSES.has(lastStatus)) {
           console.error(`[failover] ${targetProvider.name} returned ${lastStatus}`);
           console.error(`[failover] Error body:`, lastBody);
@@ -228,7 +162,6 @@ async function fetchWithFailover(
           );
         }
 
-        // Retryable — wait and retry (only on first attempt)
         if (attempt === 0) {
           const retryAfter = response.headers.get('retry-after');
           const delayMs = retryAfter
@@ -241,10 +174,8 @@ async function fetchWithFailover(
           await abortableSleep(delayMs, signal);
         }
       } catch (err) {
-        // Re-throw abort errors and non-retryable FailoverErrors
         if ((err instanceof Error && err.name === 'AbortError') || err instanceof FailoverError) throw err;
 
-        // Network error — treat as retryable
         lastStatus = 0;
         lastBody = err instanceof Error ? err.message : String(err);
         if (attempt === 0) {
@@ -253,7 +184,6 @@ async function fetchWithFailover(
       }
     }
 
-    // Both attempts failed for this provider
     attempts.push({ provider: targetProvider.id, status: lastStatus, body: lastBody });
 
     markProviderFailed(targetProvider.id);

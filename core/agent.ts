@@ -1,7 +1,3 @@
-// agent/agent.js
-// Provider-agnostic agent loop. All conversation history is stored in a
-// standard format (see normalize.js). Provider-specific wire formats are
-// produced just-in-time inside buildAgentRequest() via toProviderFormat().
 
 import { AI_PROVIDERS } from "../utils/providers.js";
 import { fetchWithFailover, FailoverError } from "./failover.js";
@@ -32,10 +28,6 @@ import type {
 
 const OLLAMA_BASE = "http://localhost:11434";
 
-/**
- * A tool call accumulated while parsing a provider stream. `arguments` is the
- * raw JSON string while assembling, then parsed to a value (object) on return.
- */
 interface StreamToolCall {
   id: string;
   function: {
@@ -44,23 +36,19 @@ interface StreamToolCall {
   };
 }
 
-/** Return value of the stream parsers. */
 interface StreamResult {
   fullContent: string;
   toolCalls: StreamToolCall[];
 }
 
-/** A built fetch request for a target provider. */
 interface AgentRequest {
   url: string;
   headers: Record<string, string>;
   body: string;
 }
 
-/** A request body shape; loose at the boundary since it varies per provider. */
 type RequestBody = Record<string, unknown>;
 
-/** Parse a JSON request-body string back to a record (for logging/inspection). */
 function parseRequestBody(body: string): Record<string, unknown> {
   let parsed: unknown;
   try {
@@ -78,11 +66,6 @@ function parseRequestBody(body: string): Record<string, unknown> {
   return {};
 }
 
-/**
- * Coerce a JSON value to a JsonObject. Non-object values (string, number,
- * array, null) fall back to an empty object — matching the legacy `|| {}`
- * defaulting and the fact that tool arguments are always JSON objects.
- */
 function toJsonObject(value: JsonValue): JsonObject {
   if (typeof value === "object" && value !== null && !Array.isArray(value)) {
     return value;
@@ -90,7 +73,6 @@ function toJsonObject(value: JsonValue): JsonObject {
   return {};
 }
 
-/** Parse a JSON string to a JsonObject, or null if it isn't a JSON object. */
 function parseJsonObject(text: string): JsonObject | null {
   let parsed: unknown;
   try {
@@ -109,18 +91,12 @@ function parseJsonObject(text: string): JsonObject | null {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// SSE chunk shapes (provider stream wire formats)
-// ---------------------------------------------------------------------------
-
-/** Incremental tool-call fragment in an OpenAI delta. */
 interface OpenAIDeltaToolCall {
   index?: number;
   id?: string;
   function?: { name?: string; arguments?: string };
 }
 
-/** OpenAI streaming delta payload. */
 interface OpenAIDelta {
   content?: string;
   reasoning?: string;
@@ -128,14 +104,12 @@ interface OpenAIDelta {
   tool_calls?: OpenAIDeltaToolCall[];
 }
 
-/** A single OpenAI-compatible SSE chunk. */
 interface OpenAIChunk {
   model?: string;
   choices?: { delta?: OpenAIDelta; finish_reason?: string | null }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
 }
 
-/** A single Anthropic SSE event. */
 interface AnthropicStreamEvent {
   type?: string;
   index?: number;
@@ -150,13 +124,11 @@ interface AnthropicStreamEvent {
   usage?: { input_tokens?: number; output_tokens?: number };
 }
 
-/** Accumulator for an Anthropic content block while streaming. */
 type AnthropicContentBlock =
   | { type: "tool_use"; id?: string; name?: string; inputJson: string }
   | { type: "thinking"; text: string }
   | { type: "text"; text: string };
 
-/** A small typed reader for a parsed-JSON record. */
 function recordOf(value: unknown): Record<string, unknown> | null {
   if (typeof value === "object" && value !== null) {
     const record: Record<string, unknown> = {};
@@ -174,7 +146,6 @@ function asNumber(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
 }
 
-/** Narrow a parsed SSE payload into an OpenAIChunk (best effort, no casts). */
 function parseOpenAIChunk(data: string): OpenAIChunk | null {
   let parsed: unknown;
   try {
@@ -234,7 +205,6 @@ function parseOpenAIChunk(data: string): OpenAIChunk | null {
   return chunk;
 }
 
-/** Narrow a parsed SSE payload into an AnthropicStreamEvent (best effort, no casts). */
 function parseAnthropicEvent(data: string): AnthropicStreamEvent | null {
   let parsed: unknown;
   try {
@@ -281,7 +251,6 @@ function parseAnthropicEvent(data: string): AnthropicStreamEvent | null {
   return event;
 }
 
-/** Best-effort coercion of an unknown (already JSON-parsed) value to JsonValue. */
 function toJsonValue(value: unknown): JsonValue {
   if (
     value === null ||
@@ -301,26 +270,11 @@ function toJsonValue(value: unknown): JsonValue {
     }
     return obj;
   }
-  // functions/undefined/symbol — not representable; coerce to null.
   return null;
 }
 
-/**
- * Tokens attributed to one image_url content part in the debug estimate.
- * Gemma-class mmproj encoders emit a fixed ~256-token budget per image
- * regardless of the base64 payload size — an approximation, but within 2-3x
- * of reality where chars/4 over the base64 bytes was off by ~40x.
- */
 const IMAGE_PART_TOKENS = 256;
 
-/**
- * Rough token estimate for a request's messages array, for the debug log line.
- * chars/4 works for text, but a base64 data-URI image part is NOT text — the
- * vision encoder turns the whole image into a fixed token budget, so counting
- * ~100 KB of base64 at chars/4 inflated the log ~40x on vision turns
- * (~86k logged for a real ~2.3k-token request). Image parts count flat;
- * everything else counts chars/4.
- */
 export function estimateMessageTokens(messages: unknown[]): number {
   let chars = 0;
   let images = 0;
@@ -343,46 +297,19 @@ export function estimateMessageTokens(messages: unknown[]): number {
   return Math.round(chars / 4) + images * IMAGE_PART_TOKENS;
 }
 
-/**
- * Run the agent loop. Yields events for streaming to the frontend.
- *
- * Events yielded:
- * - { type: "text_delta", text } — incremental text from the model
- * - { type: "tool_start", name, input } — tool call initiated
- * - { type: "tool_result", name, result } — tool call completed
- * - { type: "tool_error", name, error } — tool call failed
- * - { type: "stats", model, eval_count, eval_duration, total_duration }
- * - { type: "done", content } — final answer, loop complete
- * - { type: "max_iterations", message } — agent hit the iteration safety cap
- * - { type: "thinking" } — agent is reasoning about tool results (iteration > 1)
- * - { type: "error", error } — fatal error
- *
- * @param options.model - Model name (e.g. "llama3.3", "grok-3", "claude-sonnet-4-5")
- * @param options.messages - Conversation history
- * @param options.tools - Tool definitions from tools.js
- * @param options.signal - Optional abort signal
- * @param options.provider - Provider config from AI_PROVIDERS. Defaults to Ollama.
- * @param options.context - Execution context passed to tool execute functions (e.g. providers, userID).
- * @yields Stream events for the frontend
- */
 export async function* agentLoop(
   { model, messages, tools, signal, provider, context, maxTurns }: AgentLoopOptions,
 ): AsyncGenerator<AgentEvent, void, unknown> {
-  // Default to Ollama for backward compat (cron, etc.)
   if (!provider) {
     provider = AI_PROVIDERS.ollama;
   }
   if (!provider) {
     throw new Error("No provider available");
   }
-  // Narrowed, non-undefined provider for use inside loops/closures below.
   const resolvedProvider: Provider = provider;
 
-  // Helper to log events (fire-and-forget, non-blocking)
   const logEvent = (type: EventType, data: Record<string, JsonValue | undefined> = {}): void => {
     if (context?.eventStore && context?.userID) {
-      // Drop undefined values (matches JSON serialization behavior) so the
-      // payload conforms to JsonObject.
       const cleaned: JsonObject = {};
       for (const key of Object.keys(data)) {
         const value = data[key];
@@ -392,17 +319,15 @@ export async function* agentLoop(
         userId: context.userID,
         type,
         data: cleaned,
-      }).catch(() => {}); // Swallow errors to avoid breaking the agent loop
+      }).catch(() => {});
     }
   };
 
-  // Log message_sent for the latest user message (first iteration only)
   const lastUserMsg = messages.filter(m => m.role === 'user').slice(-1)[0];
   if (lastUserMsg) {
     const content = typeof lastUserMsg.content === 'string'
       ? lastUserMsg.content
       : JSON.stringify(lastUserMsg.content);
-    // Full audit log: capture complete message content for debugging
     logEvent('message_sent', { length: content.length, content });
   }
 
@@ -412,7 +337,6 @@ export async function* agentLoop(
   while (iteration < maxIterations) {
     iteration++;
 
-    // Build tool definitions in the format the provider expects
     const toolDefs = tools.map((t) => ({
       type: "function",
       function: {
@@ -425,18 +349,11 @@ export async function* agentLoop(
     let response: Response | undefined;
     let activeProvider: Provider = resolvedProvider;
 
-    /**
-     * Build a fetch request for a given target provider.
-     * Messages are stored in standard format and converted to provider-specific
-     * wire format just-in-time here via toProviderFormat().
-     * @param targetProvider - Provider config from AI_PROVIDERS.
-     */
     const buildAgentRequest = (targetProvider: Provider): AgentRequest => {
       const targetApiKey = targetProvider.envKey ? process.env[targetProvider.envKey] : null;
       const targetIsAnthropic = targetProvider.id === "anthropic";
       const targetModel = targetProvider === resolvedProvider ? model : targetProvider.defaultModel;
 
-      // JIT conversion: standard format → provider wire format
       const targetFormat = targetIsAnthropic ? "anthropic" : "openai";
       const wireMessages = toProviderFormat(messages, targetFormat);
 
@@ -469,13 +386,8 @@ export async function* agentLoop(
         };
       }
 
-      // OpenAI-compatible path
       let finalMessages: Message[] = wireMessages;
 
-      // Local providers use text-based tool calls via system prompt, so convert
-      // role:"tool" messages to role:"user" and strip tool_calls from assistant
-      // messages — unless the model's chat template supports role:"tool" natively
-      // (e.g. LFM2.5). Models that support it set supportsToolRole on the provider.
       if (targetProvider.local && !targetProvider.supportsToolRole) {
         finalMessages = [];
         const tcNameMap: Record<string, string> = {};
@@ -505,8 +417,6 @@ export async function* agentLoop(
         max_tokens: 8192,
       };
 
-      // Include tool definitions for non-local providers and local providers
-      // that support native tool calling (e.g., GLM-4.7 via local LLM server v0.30.7+)
       if (!targetProvider.local || targetProvider.supportsToolRole) {
         requestBody.tools = toolDefs;
       }
@@ -518,7 +428,6 @@ export async function* agentLoop(
       };
     };
 
-    // Local providers (ollama, local): direct fetch, no failover
     if (resolvedProvider.local) {
       const { url, headers, body } = buildAgentRequest(resolvedProvider);
       const reqBody = parseRequestBody(body);
@@ -543,8 +452,6 @@ export async function* agentLoop(
         activeProvider = result.activeProvider;
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
-        // FailoverError.message already includes body hints (e.g. free credit used).
-        // Do not rebuild from status-only — that dropped Pro paywall strings.
         const msg = err instanceof FailoverError
           ? err.message
           : (err instanceof Error ? err.message : String(err));
@@ -555,50 +462,34 @@ export async function* agentLoop(
       }
     }
 
-    // Stream parsing — two paths depending on provider wire format
     if (!response) return;
     let fullContent = "";
     let toolCalls: StreamToolCall[] = [];
 
     if (activeProvider.id === "anthropic") {
-      // Anthropic SSE format: content_block_start, content_block_delta, content_block_stop, message_delta
       const result = yield* parseAnthropicStream(response, fullContent, toolCalls, signal, activeProvider.id);
       fullContent = result.fullContent;
       toolCalls = result.toolCalls;
     } else if (activeProvider.id === "local") {
-      // Local OpenAI-compatible server. Models served this way
-      // may emit output in one of three formats:
-      // 1. gpt-oss channel tokens (<|channel|>analysis/final<|message|>)
-      // 2. Native reasoning (delta.reasoning from parseOpenAIStream)
-      // 3. Plain text (LFM2.5, SmolLM, etc. — no special tokens)
-      // Detect format by buffering initial tokens and checking for markers.
       const gen = parseOpenAIStream(response, fullContent, toolCalls, signal, activeProvider.id);
       let rawBuffer = "";
       let finalMarkerFound = false;
       let lastFinalYieldPos = 0;
       let usesNativeReasoning = false;
-      let usesPassthrough = false; // Models without channel tokens (LFM, SmolLM, etc.)
+      let usesPassthrough = false;
       let analysisStarted = false;
       let analysisEnded = false;
       let lastThinkingYieldPos = 0;
       const ANALYSIS_MARKER = "<|channel|>analysis<|message|>";
       const ANALYSIS_END = "<|end|>";
       const FINAL_MARKER = "<|channel|>final<|message|>";
-      const CHANNEL_DETECT_THRESHOLD = 200; // chars before assuming no channel tokens
+      const CHANNEL_DETECT_THRESHOLD = 200;
 
       while (true) {
         const { value, done } = await gen.next();
         if (done) {
           fullContent = value.fullContent;
           toolCalls = value.toolCalls;
-          // Flush buffered plain-text responses that never hit the
-          // CHANNEL_DETECT_THRESHOLD. Happens for short greetings and
-          // small-talk from models that don't emit gpt-oss channel tokens
-          // (Gemma 4 E2B, LFM2.5, SmolLM, etc.). Without this flush, the
-          // rawBuffer is silently discarded and the downstream consumer
-          // never receives any text_delta — the UI renders an empty bubble.
-          // Skip if the buffer contains tool call markers so the existing
-          // post-loop parseToolCalls() below can handle them.
           if (!usesPassthrough && !usesNativeReasoning && !analysisStarted && !finalMarkerFound && rawBuffer.length > 0) {
             if (!hasToolCallMarkers(rawBuffer)) {
               const textEvent: TextDeltaEvent = { type: "text_delta", text: rawBuffer };
@@ -609,8 +500,6 @@ export async function* agentLoop(
           break;
         }
 
-        // If parseOpenAIStream yields thinking events, the model uses native reasoning —
-        // pass everything through directly (no channel token parsing needed).
         if (value.type === "thinking") {
           usesNativeReasoning = true;
           yield value;
@@ -622,24 +511,18 @@ export async function* agentLoop(
           continue;
         }
 
-        // Native reasoning mode: pass text_delta through directly
         if (usesNativeReasoning) {
           yield value;
           continue;
         }
 
-        // Passthrough mode: model doesn't use channel tokens, stream directly
         if (usesPassthrough) {
           yield value;
           continue;
         }
 
-        // Channel token mode: buffer and parse markers, stream thinking incrementally
         rawBuffer += value.text;
 
-        // Fallback: if enough text accumulated without any channel token,
-        // the model doesn't use gpt-oss format (e.g. LFM2.5, SmolLM).
-        // Flush buffer and switch to passthrough for remaining tokens.
         if (!analysisStarted && !finalMarkerFound && rawBuffer.length > CHANNEL_DETECT_THRESHOLD) {
           console.log("[local] no channel tokens after", rawBuffer.length, "chars — switching to passthrough");
           usesPassthrough = true;
@@ -650,7 +533,6 @@ export async function* agentLoop(
         }
 
         if (!finalMarkerFound) {
-          // Detect analysis channel start
           if (!analysisStarted) {
             const aIdx = rawBuffer.indexOf(ANALYSIS_MARKER);
             if (aIdx !== -1) {
@@ -660,7 +542,6 @@ export async function* agentLoop(
             }
           }
 
-          // Stream thinking text incrementally while inside analysis channel
           if (analysisStarted && !analysisEnded) {
             const endIdx = rawBuffer.indexOf(ANALYSIS_END, lastThinkingYieldPos);
             if (endIdx !== -1) {
@@ -670,7 +551,7 @@ export async function* agentLoop(
                 const thinkingEvent: ThinkingEvent = {
                   type: "thinking",
                   text: chunk,
-                  hasNativeThinking: false, // Channel token simulation
+                  hasNativeThinking: false,
                 };
                 validateEvent(thinkingEvent);
                 yield thinkingEvent;
@@ -684,7 +565,7 @@ export async function* agentLoop(
                 const thinkingEvent: ThinkingEvent = {
                   type: "thinking",
                   text: chunk,
-                  hasNativeThinking: false, // Channel token simulation
+                  hasNativeThinking: false,
                 };
                 validateEvent(thinkingEvent);
                 yield thinkingEvent;
@@ -693,7 +574,6 @@ export async function* agentLoop(
             }
           }
 
-          // Check for final channel marker
           const fIdx = rawBuffer.indexOf(FINAL_MARKER);
           if (fIdx !== -1) {
             console.log("[local] final marker found at", fIdx, "| bufLen:", rawBuffer.length);
@@ -708,7 +588,6 @@ export async function* agentLoop(
             }
           }
         } else {
-          // In final channel — yield incremental text
           const newText = rawBuffer.slice(lastFinalYieldPos);
           if (newText) {
             const textEvent: TextDeltaEvent = { type: "text_delta", text: newText };
@@ -719,12 +598,8 @@ export async function* agentLoop(
         }
       }
 
-      // Clean fullContent for persistence (strip channel tokens)
       if (!usesNativeReasoning && !usesPassthrough) fullContent = stripGptOssTokens(fullContent);
 
-      // Detect text-based tool calls from <tool_call> markers in model output.
-      // Models without native tool_calls support emit tool invocations as text
-      // when instructed via system prompt.
       if (hasToolCallMarkers(fullContent)) {
         const textToolCalls = parseToolCalls(fullContent);
         if (textToolCalls.length > 0) {
@@ -733,16 +608,12 @@ export async function* agentLoop(
         }
       }
     } else {
-      // OpenAI-compatible SSE format (Ollama, OpenAI, xAI)
       const result = yield* parseOpenAIStream(response, fullContent, toolCalls, signal, activeProvider.id);
       fullContent = result.fullContent;
       toolCalls = result.toolCalls;
     }
 
-    // Check if the model wants to call tools
     if (toolCalls.length > 0) {
-      // Standard format: single assistant message with toolCalls array.
-      // toProviderFormat() splits this into the wire format each provider expects.
       const assistantMsg: Message = {
         role: "assistant",
         content: fullContent || "",
@@ -766,9 +637,6 @@ export async function* agentLoop(
 
       const assistantToolCalls = assistantMsg.toolCalls ?? [];
 
-      // Execute each tool and update the standard-format toolCalls in place.
-      // No separate tool-result messages — results are stored on the toolCall object.
-      // toProviderFormat() will expand these into the wire format at request time.
       for (let i = 0; i < assistantToolCalls.length; i++) {
         const tc = assistantToolCalls[i];
         if (!tc) continue;
@@ -797,7 +665,6 @@ export async function* agentLoop(
           validateEvent(toolResultEvent);
           yield toolResultEvent;
 
-          // Check if the result is an image and emit additional image event
           const parsed = parseJsonObject(resultStr);
           if (parsed && parsed.type === 'image' && parsed.url) {
             const imageEvent: ImageEvent = {
@@ -811,7 +678,6 @@ export async function* agentLoop(
 
           tc.result = resultStr;
           tc.status = "done";
-          // Full audit log: capture tool input and output for debugging
           logEvent('tool_call', {
             tool: tc.name,
             success: true,
@@ -827,7 +693,6 @@ export async function* agentLoop(
           yield toolErrorEvent;
           tc.result = errorResult;
           tc.status = "error";
-          // Full audit log: capture tool input and error for debugging
           logEvent('tool_call', {
             tool: tc.name,
             success: false,
@@ -838,8 +703,6 @@ export async function* agentLoop(
         }
       }
 
-      // directReturn: skip the second LLM call when all tools have directReturn: true
-      // and all succeeded. Yield the combined results as text and exit the loop.
       const allDirectReturn = assistantToolCalls.every(tc => {
         const t = tools.find(tool => tool.name === tc.name);
         return t?.directReturn && tc.status === 'done';
@@ -862,7 +725,6 @@ export async function* agentLoop(
       toolCalls = [];
       fullContent = "";
     } else {
-      // Extract follow-up suggestion before persisting
       let followup: string | null = null;
       const followupMatch = fullContent.match(/<followup>([\s\S]*?)<\/followup>/);
       if (followupMatch && followupMatch[1] !== undefined) {
@@ -870,9 +732,7 @@ export async function* agentLoop(
         fullContent = fullContent.replace(/<followup>[\s\S]*?<\/followup>/, '').trim();
       }
 
-      // Standard format: plain string content, no provider-specific wrapping
       messages.push({ role: "assistant", content: fullContent, _ts: Date.now() });
-      // Full audit log: capture complete response content for debugging
       logEvent('message_received', {
         length: fullContent.length,
         content: fullContent,
@@ -894,18 +754,6 @@ export async function* agentLoop(
   yield maxIterEvent;
 }
 
-/**
- * Parse an OpenAI-compatible SSE stream (works with Ollama, OpenAI, xAI).
- *
- * Tool calls arrive incrementally across chunks via delta.tool_calls with index-based assembly.
- *
- * @param response - Fetch response with SSE body
- * @param fullContent - Accumulated text content (passed by reference via return)
- * @param toolCalls - Accumulated tool calls (passed by reference via return)
- * @param signal - Optional abort signal to cancel the reader
- * @param providerId - Provider ID for stats normalization
- * @yields text_delta events
- */
 async function* parseOpenAIStream(
   response: Response,
   fullContent: string,
@@ -937,25 +785,21 @@ async function* parseOpenAIStream(
       if (data === "[DONE]" || !data) continue;
 
       const chunk = parseOpenAIChunk(data);
-      if (!chunk) continue; // Skip malformed JSON
+      if (!chunk) continue;
       const delta = chunk.choices?.[0]?.delta;
       if (!delta) continue;
 
-      // Reasoning/thinking content (gpt-oss, DeepSeek, etc.)
       const reasoning = delta.reasoning_content || delta.reasoning;
       if (reasoning) {
         const thinkingEvent: ThinkingEvent = {
           type: "thinking",
           text: reasoning,
-          hasNativeThinking: true, // Native reasoning from provider
+          hasNativeThinking: true,
         };
         validateEvent(thinkingEvent);
         yield thinkingEvent;
       }
 
-      // Text content — suppress native tool call markers (e.g. Gemma's
-      // <|tool_call>...<tool_call|> format) since we parse the structured
-      // tool_calls from the same chunk instead.
       if (delta.content) {
         const isToolMarker = delta.content.includes('<|tool_call>') || delta.content.includes('<tool_call|>');
         if (!isToolMarker) {
@@ -966,7 +810,6 @@ async function* parseOpenAIStream(
         }
       }
 
-      // Tool calls — assembled incrementally by index
       if (delta.tool_calls) {
         for (const tc of delta.tool_calls) {
           const idx = tc.index ?? 0;
@@ -986,9 +829,7 @@ async function* parseOpenAIStream(
         }
       }
 
-      // Finish reason — check for stats if present
       if (chunk.choices?.[0]?.finish_reason) {
-        // Some providers include usage stats
         if (chunk.usage) {
           const statsEvent = normalizeStatsEvent({
             model: chunk.model ?? "",
@@ -1002,14 +843,12 @@ async function* parseOpenAIStream(
     }
   }
 
-  // Parse accumulated tool call arguments from JSON strings to objects
   toolCalls = Object.values(toolCallMap).map((tc): StreamToolCall => {
     let args: string | JsonValue = tc.function.arguments;
     if (typeof args === "string") {
       try {
         args = toJsonValue(JSON.parse(args));
       } catch {
-        // Keep as string
       }
     }
     return { id: tc.id, function: { name: tc.function.name, arguments: args } };
@@ -1018,18 +857,6 @@ async function* parseOpenAIStream(
   return { fullContent, toolCalls };
 }
 
-/**
- * Parse an Anthropic SSE stream.
- *
- * Tool calls arrive via content_block_start (type: "tool_use") + content_block_delta (input_json_delta).
- *
- * @param response - Fetch response with SSE body
- * @param fullContent - Accumulated text content
- * @param toolCalls - Accumulated tool calls
- * @param signal - Optional abort signal to cancel the reader
- * @param providerId - Provider ID for stats normalization
- * @yields text_delta events
- */
 async function* parseAnthropicStream(
   response: Response,
   fullContent: string,
@@ -1061,7 +888,7 @@ async function* parseAnthropicStream(
       if (!data) continue;
 
       const event = parseAnthropicEvent(data);
-      if (!event) continue; // Skip malformed JSON
+      if (!event) continue;
 
       if (event.type === "content_block_start") {
         const block = event.content_block;
@@ -1089,7 +916,7 @@ async function* parseAnthropicStream(
           const thinkingEvent: ThinkingEvent = {
             type: "thinking",
             text: delta.thinking ?? "",
-            hasNativeThinking: true, // Native thinking from Anthropic
+            hasNativeThinking: true,
           };
           validateEvent(thinkingEvent);
           yield thinkingEvent;
@@ -1118,7 +945,6 @@ async function* parseAnthropicStream(
     }
   }
 
-  // Assemble tool calls from content blocks
   toolCalls = Object.values(contentBlocks)
     .filter((b): b is Extract<AnthropicContentBlock, { type: "tool_use" }> => b.type === "tool_use")
     .map((b): StreamToolCall => {
@@ -1126,7 +952,6 @@ async function* parseAnthropicStream(
       try {
         args = toJsonValue(JSON.parse(b.inputJson));
       } catch {
-        // Empty or malformed
       }
       return { id: b.id ?? "", function: { name: b.name ?? "", arguments: args } };
     });
@@ -1134,22 +959,17 @@ async function* parseAnthropicStream(
   return { fullContent, toolCalls };
 }
 
-/** A model listed by the Ollama /api/tags endpoint. */
 interface OllamaModelInfo {
   name: string;
   size: number;
   modified: string;
 }
 
-/** Result of getOllamaStatus(). */
 interface OllamaStatus {
   running: boolean;
   models: OllamaModelInfo[];
 }
 
-/**
- * Check if Ollama is running and list available models.
- */
 export async function getOllamaStatus(): Promise<OllamaStatus> {
   try {
     const res = await fetch(`${OLLAMA_BASE}/api/tags`);
@@ -1173,21 +993,6 @@ export async function getOllamaStatus(): Promise<OllamaStatus> {
   }
 }
 
-/**
- * Check if a local OpenAI-compatible model server is running and list
- * available models. Defaults to the local LLM server convention
- * (http://localhost:1316/v1) and can be overridden with LOCAL_LLM_URL.
- *
- * @returns {Promise<{running: boolean, models: Array<{name: string}>}>}
- */
-/**
- * Strip gpt-oss channel tokens and extract only the final response content.
- * If the text has a "final" channel, returns only that content.
- * Otherwise strips all `<|...|>` tokens and returns the cleaned text.
- *
- * @param text - Raw model output with channel tokens
- * @returns Cleaned text with tokens removed
- */
 function stripGptOssTokens(text: string): string {
   const FINAL_RE = /<\|channel\|>final<\|message\|>([\s\S]*)$/;
   const TOKEN_RE = /<\|[^|]*\|>/g;
@@ -1196,16 +1001,13 @@ function stripGptOssTokens(text: string): string {
   if (finalMatch && finalMatch[1] !== undefined) {
     return finalMatch[1].replace(TOKEN_RE, "").trim();
   }
-  // No channel markers — strip all tokens as fallback
   return text.replace(TOKEN_RE, "").trim();
 }
 
-/** A model listed by a local OpenAI-compatible /v1/models endpoint. */
 interface LocalModelInfo {
   name: string;
 }
 
-/** Result of getMlxLocalStatus(). */
 interface LocalStatus {
   running: boolean;
   models: LocalModelInfo[];

@@ -1,3 +1,7 @@
+0.45.0
+
+  Remove code comments
+
 0.44.2
 
   Fix npm bin path

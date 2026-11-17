@@ -9,7 +9,6 @@ import type {
   SessionStoreInitOptions,
 } from "../types.js";
 
-/** Preferences fetched per user, used to build the system prompt. */
 interface SessionPrefs {
   agentName?: string;
   agentPersonality?: string;
@@ -19,7 +18,6 @@ type PrefsFetcher = (userId: string) => Promise<SessionPrefs>;
 type SystemPromptBuilder = (prefs: SessionPrefs) => string;
 type HeartbeatEnsurer = (userId: string) => Promise<unknown | null>;
 
-/** In-memory session record. Compatible with the shared Session shape. */
 interface MemorySession extends Session {
   id: string;
   owner: string;
@@ -31,9 +29,6 @@ interface MemorySession extends Session {
   updatedAt: Date;
 }
 
-/**
- * In-memory SessionStore implementation for testing
- */
 export class MemorySessionStore extends SessionStore {
   sessions: Map<string, MemorySession>;
   prefsFetcher: PrefsFetcher | null;
@@ -76,7 +71,6 @@ export class MemorySessionStore extends SessionStore {
   }
 
   async getOrCreateDefaultSession(owner: string): Promise<MemorySession> {
-    // Find most recent session for this owner
     const userSessions = Array.from(this.sessions.values())
       .filter(s => s.owner === owner)
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
@@ -85,7 +79,6 @@ export class MemorySessionStore extends SessionStore {
     if (!session) {
       session = await this.createSession(owner);
     } else {
-      // Refresh system prompt timestamp
       session.messages[0] = { role: 'system', content: await this.buildSystemPrompt(owner) };
     }
     if (this.heartbeatEnsurer) {
@@ -101,7 +94,6 @@ export class MemorySessionStore extends SessionStore {
     const session = this.sessions.get(sessionId);
     if (!session || session.owner !== owner) return null;
 
-    // Refresh system prompt timestamp
     session.messages[0] = { role: 'system', content: await this.buildSystemPrompt(owner) };
     return session;
   }
@@ -114,10 +106,6 @@ export class MemorySessionStore extends SessionStore {
     return session;
   }
 
-  /**
-   * Save session with normalized messages.
-   * Converts any provider-specific message formats to standard format before persisting.
-   */
   async saveSession(sessionId: string, messages: Message[], model: string, provider?: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session ${sessionId} not found`);
@@ -127,7 +115,6 @@ export class MemorySessionStore extends SessionStore {
     session.updatedAt = new Date();
     if (provider) session.provider = provider;
 
-    // Auto-populate title from first user message if empty
     if (!session.title) {
       const firstUserMsg = messages.find((m) => m.role === 'user');
       if (firstUserMsg) {
@@ -139,9 +126,6 @@ export class MemorySessionStore extends SessionStore {
     }
   }
 
-  /**
-   * Add a message to a session, normalizing to standard format before saving.
-   */
   async addMessage(sessionId: string, message: Message): Promise<MemorySession> {
     const session = await this.getSessionInternal(sessionId);
     if (!session) throw new Error(`Session ${sessionId} not found`);

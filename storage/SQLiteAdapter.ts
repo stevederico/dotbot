@@ -12,22 +12,14 @@ import type {
   SessionSummary,
 } from '../types.js';
 
-/** Coerce a raw SQLite cell to a string. */
 function asString(value: SQLOutputValue | undefined): string {
   if (typeof value === 'string') return value;
   if (value === null || value === undefined) return '';
   return String(value);
 }
 
-/** Standard-format messages as produced by toStandardFormat(). */
 type StdMessages = ReturnType<typeof toStandardFormat>;
 
-/**
- * Faithfully convert standard-format messages back into the shared Message[]
- * shape. toStandardFormat() widens tool-call result/name; at runtime stored
- * messages always carry a string result and a present name, so this rebuild
- * is lossless for persisted data.
- */
 export function coerceMessages(messages: StdMessages): Message[] {
   return messages.map((msg) => {
     const out: Message = {
@@ -56,7 +48,6 @@ export function coerceMessages(messages: StdMessages): Message[] {
   });
 }
 
-/** A session document persisted by this store. */
 export interface StoredSession extends Session {
   id: string;
   owner: string;
@@ -69,7 +60,6 @@ export interface StoredSession extends Session {
   [key: string]: unknown;
 }
 
-/** A session summary row returned by listSessions(). */
 export interface StoredSessionSummary extends SessionSummary {
   id: string;
   owner: string;
@@ -83,18 +73,11 @@ export interface StoredSessionSummary extends SessionSummary {
   [key: string]: unknown;
 }
 
-/** Agent preferences fetched for system-prompt building. */
 export interface AgentPrefs {
   agentName?: string;
   agentPersonality?: string;
 }
 
-/**
- * Default system prompt builder for the agent.
- *
- * @param options - Prompt options
- * @returns System prompt
- */
 export function defaultSystemPrompt({ agentName = 'Assistant', agentPersonality = '' }: AgentPrefs = {}): string {
   const now = new Date().toISOString();
   return `You are a helpful personal AI assistant called ${agentName}.${agentPersonality ? `\nYour personality and tone: ${agentPersonality}. Embody this in all responses.` : ''}
@@ -127,12 +110,6 @@ type PrefsFetcher = NonNullable<SessionStoreInitOptions['prefsFetcher']>;
 type SystemPromptBuilder = NonNullable<SessionStoreInitOptions['systemPromptBuilder']>;
 type HeartbeatEnsurer = NonNullable<SessionStoreInitOptions['heartbeatEnsurer']>;
 
-/**
- * SQLite-backed SessionStore implementation
- *
- * Uses Node.js 22.5+ built-in sqlite module for zero-dependency session storage.
- * All dates stored as ISO 8601 strings, messages as JSON TEXT column.
- */
 export class SQLiteSessionStore extends SessionStore {
   db: DatabaseSync | null;
   prefsFetcher: PrefsFetcher | null;
@@ -147,19 +124,12 @@ export class SQLiteSessionStore extends SessionStore {
     this.heartbeatEnsurer = null;
   }
 
-  /**
-   * Initialize SQLite session store
-   *
-   * @param dbPath - Path to SQLite database file
-   * @param options - Initialization options
-   */
   async init(dbPath: string, options: SessionStoreInitOptions = {}): Promise<void> {
     this.db = new DatabaseSync(dbPath);
     this.prefsFetcher = options.prefsFetcher || null;
     this.systemPromptBuilder = options.systemPromptBuilder || defaultSystemPrompt;
     this.heartbeatEnsurer = options.heartbeatEnsurer || null;
 
-    // Create schema
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
@@ -182,12 +152,6 @@ export class SQLiteSessionStore extends SessionStore {
     console.log('[sessions] initialized with SQLite (multi-session)');
   }
 
-  /**
-   * Build system prompt with current timestamp
-   *
-   * @param owner - User ID
-   * @returns System prompt
-   */
   async buildSystemPrompt(owner: string): Promise<string> {
     const prefs = this.prefsFetcher ? await this.prefsFetcher(owner) : {};
     return this.systemPromptBuilder(prefs);
@@ -241,7 +205,6 @@ export class SQLiteSessionStore extends SessionStore {
       session = await this.createSession(owner);
     } else {
       session = this._rowToSession(row);
-      // Refresh system prompt timestamp
       session.messages[0] = { role: 'system', content: await this.buildSystemPrompt(owner) };
     }
 
@@ -265,7 +228,6 @@ export class SQLiteSessionStore extends SessionStore {
     if (!row) return null;
 
     const session = this._rowToSession(row);
-    // Refresh system prompt timestamp
     session.messages[0] = { role: 'system', content: await this.buildSystemPrompt(owner) };
     return session;
   }
@@ -285,15 +247,6 @@ export class SQLiteSessionStore extends SessionStore {
     return session;
   }
 
-  /**
-   * Save session with normalized messages.
-   * Converts any provider-specific message formats to standard format before persisting.
-   *
-   * @param sessionId - Session UUID
-   * @param messages - Messages (provider-specific or standard format)
-   * @param model - Model identifier
-   * @param provider - Provider name
-   */
   async saveSession(sessionId: string, messages: Message[], model: string, provider?: string): Promise<void> {
     if (!this.db) throw new Error('Sessions not initialized. Call init() first.');
 
@@ -308,7 +261,6 @@ export class SQLiteSessionStore extends SessionStore {
       updateFields.provider = provider;
     }
 
-    // Auto-populate title from first user message if empty
     const titleStmt = this.db.prepare('SELECT title FROM sessions WHERE id = ?');
     const titleRow = titleStmt.get(sessionId);
 
@@ -316,14 +268,12 @@ export class SQLiteSessionStore extends SessionStore {
       const firstUserMsg = normalized.find((m) => m.role === 'user');
       if (firstUserMsg && typeof firstUserMsg.content === 'string') {
         const rawTitle = firstUserMsg.content.slice(0, 60).trim();
-        // Skip generic/short titles
         if (rawTitle.length >= 5 && !/^(msg|test|hi|hey|hello|ok|yo|sup)\d*$/i.test(rawTitle)) {
           updateFields.title = rawTitle;
         }
       }
     }
 
-    // Build dynamic UPDATE query
     const setClause = Object.keys(updateFields).map(key => `${key} = ?`).join(', ');
     const values = Object.values(updateFields);
 
@@ -334,13 +284,6 @@ export class SQLiteSessionStore extends SessionStore {
     stmt.run(...values, sessionId);
   }
 
-  /**
-   * Add a message to a session, normalizing to standard format before saving.
-   *
-   * @param sessionId - Session UUID
-   * @param message - Message object (any provider format)
-   * @returns Updated session
-   */
   async addMessage(sessionId: string, message: Message): Promise<StoredSession> {
     const session = await this.getSessionInternal(sessionId);
     if (!session) throw new Error(`Session ${sessionId} not found`);
@@ -367,12 +310,6 @@ export class SQLiteSessionStore extends SessionStore {
     stmt.run(provider, new Date().toISOString(), sessionId);
   }
 
-  /**
-   * Update session title.
-   *
-   * @param sessionId - Session UUID
-   * @param title - New title
-   */
   async updateTitle(sessionId: string, title: string): Promise<void> {
     if (!this.db) throw new Error('Sessions not initialized. Call init() first.');
     const stmt = this.db.prepare(`
@@ -433,37 +370,22 @@ export class SQLiteSessionStore extends SessionStore {
     return { deletedCount: result.changes };
   }
 
-  /**
-   * Upsert a session by Swift's conversation ID.
-   * Creates a new session or updates an existing one with the given messages.
-   * Used to sync Swift conversations to the agent SQLite store.
-   *
-   * @param sessionId - Swift conversation UUID (used as session ID)
-   * @param owner - User ID
-   * @param messages - Full message array from Swift (already normalized)
-   * @param model - Model identifier
-   * @param provider - Provider name
-   */
   async upsertSession(sessionId: string, owner: string, messages: Message[], model: string, provider = 'ollama'): Promise<void> {
     if (!this.db) throw new Error('Sessions not initialized. Call init() first.');
 
     const now = new Date().toISOString();
     const messagesJson = JSON.stringify(messages);
 
-    // Auto-title from first user message (only if descriptive enough)
     const firstUser = messages.find((m) => m.role === 'user');
     const firstUserContent = firstUser && typeof firstUser.content === 'string' ? firstUser.content : '';
     const rawTitle = firstUserContent.slice(0, 60).trim();
-    // Skip generic/short titles - require at least 5 chars and not look like test input
     const title = rawTitle.length >= 5 && !/^(msg|test|hi|hey|hello|ok|yo|sup)\d*$/i.test(rawTitle) ? rawTitle : '';
 
-    // Try UPDATE first
     const updateStmt = this.db.prepare(`
       UPDATE sessions SET messages=?, model=?, provider=?, title=?, updatedAt=? WHERE id=?
     `);
     const result = updateStmt.run(messagesJson, model, provider, title, now, sessionId);
 
-    // If no row updated, INSERT
     if (result.changes === 0) {
       const insertStmt = this.db.prepare(`
         INSERT INTO sessions (id, owner, title, messages, model, provider, createdAt, updatedAt)
@@ -473,11 +395,6 @@ export class SQLiteSessionStore extends SessionStore {
     }
   }
 
-  /**
-   * Convert SQLite row to session object
-   *
-   * @private
-   */
   _rowToSession(row: Record<string, SQLOutputValue>): StoredSession {
     return {
       id: asString(row.id),
@@ -491,11 +408,6 @@ export class SQLiteSessionStore extends SessionStore {
     };
   }
 
-  /**
-   * Parse a JSON messages column into a Message[] (empty array on failure).
-   *
-   * @private
-   */
   _parseMessages(text: string): Message[] {
     let parsed: unknown;
     try {
@@ -507,9 +419,6 @@ export class SQLiteSessionStore extends SessionStore {
     return parsed.filter((m): m is Message => typeof m === 'object' && m !== null && 'role' in m);
   }
 
-  /**
-   * Close the database connection and checkpoint WAL.
-   */
   close(): void {
     if (this.db) {
       try {

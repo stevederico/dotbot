@@ -5,30 +5,13 @@ import { TextEncoder } from 'node:util';
 import { agentLoop, estimateMessageTokens } from '../core/agent.js';
 import type { AgentEvent, Provider } from '../types.js';
 
-/** A single OpenAI-style streaming delta in the mocked SSE body. */
 interface SSEDelta {
   content?: string;
   finish_reason?: string;
 }
 
-/** Restores the original globalThis.fetch when invoked. */
 type RestoreFetch = () => void;
 
-/**
- * Regression tests for the local provider branch of agentLoop.
- *
- * These cover the flush branch added in 0.30 that handles short plain-text
- * responses from local models that never emit gpt-oss channel tokens
- * (Gemma 4 E2B, LFM2.5, SmolLM). Without the flush, the rawBuffer was
- * silently discarded on stream end and the downstream consumer received
- * zero text_delta events — empty assistant bubbles in the UI.
- */
-
-/**
- * Build a minimal local-style provider for agentLoop tests.
- * The `id` must be "local" to hit the buffered-parsing branch,
- * and `local: true` skips the failover path for a direct fetch.
- */
 function makeLocalProvider(): Provider {
   return {
     id: 'local',
@@ -37,8 +20,6 @@ function makeLocalProvider(): Provider {
     endpoint: '/chat/completions',
     local: true,
     headers: () => ({ 'Content-Type': 'application/json' }),
-    // The "local" branch of agentLoop never reads these, but Provider requires
-    // them; inert stubs keep the mock fully typed without altering behavior.
     defaultModel: 'test-model',
     models: [{ id: 'test-model', name: 'Test Model' }],
     formatRequest: (messages, model) => ({ model, messages: [] }),
@@ -46,11 +27,6 @@ function makeLocalProvider(): Provider {
   };
 }
 
-/**
- * Mock a fetch Response carrying an OpenAI-style SSE stream.
- * Accepts an array of {content?, finish_reason?} deltas. Each becomes one
- * SSE data line. A final "data: [DONE]" terminator is appended automatically.
- */
 function mockSSEResponse(deltas: SSEDelta[]): Response {
   const encoder = new TextEncoder();
   const body = new ReadableStream<Uint8Array>({
@@ -69,10 +45,6 @@ function mockSSEResponse(deltas: SSEDelta[]): Response {
   });
 }
 
-/**
- * Replace globalThis.fetch with a mock that returns the given Response
- * for every call. Returns a restore function to put the original back.
- */
 function stubFetch(response: Response): RestoreFetch {
   const original = globalThis.fetch;
   globalThis.fetch = async () => response;
@@ -90,9 +62,6 @@ describe('agentLoop — local short plain-text response flush', () => {
   });
 
   test('yields text_delta for a <200-char greeting that never hits passthrough threshold', async () => {
-    // Gemma 4 E2B greetings are 30-150 chars and emit no <|channel|> markers.
-    // Pre-0.30: rawBuffer accumulated silently, never yielded, full response 0 chars.
-    // Post-0.30: the stream-done handler flushes the buffer to a text_delta.
     restoreFetch = stubFetch(mockSSEResponse([
       { content: 'Hi' },
       { content: ' there!' },
@@ -128,9 +97,6 @@ describe('agentLoop — local short plain-text response flush', () => {
   });
 
   test('does not flush when the buffer contains tool call markers', async () => {
-    // Guards against false-positive text emission when the model emits a
-    // text-based tool call — those are handled by the post-loop parseToolCalls()
-    // branch, not the flush path.
     restoreFetch = stubFetch(mockSSEResponse([
       { content: '<tool_call>' },
       { content: '{"name":"dot_web_search","arguments":{"query":"weather"}}' },
@@ -153,18 +119,15 @@ describe('agentLoop — local short plain-text response flush', () => {
         },
       ],
       provider: makeLocalProvider(),
-      maxTurns: 1, // Cap after the first iteration so the loop exits
+      maxTurns: 1,
     });
 
     const events: AgentEvent[] = [];
     for await (const event of gen) {
       events.push(event);
-      if (events.length > 20) break; // Safety cap in case tool loop misbehaves
+      if (events.length > 20) break;
     }
 
-    // Critical assertion: no text_delta should carry the raw <tool_call> markup.
-    // If the flush branch fires unguarded, the user would see literal
-    // "<tool_call>..." in their chat bubble.
     const textWithMarkers = events
       .filter((e): e is Extract<AgentEvent, { type: 'text_delta' }> => e.type === 'text_delta')
       .filter((e) => e.text && e.text.includes('<tool_call>'));
@@ -173,9 +136,6 @@ describe('agentLoop — local short plain-text response flush', () => {
   });
 
   test('end-to-end text accumulation matches the realtime consumer pattern', async () => {
-    // Simulates a streaming consumer (e.g. a WebSocket bridge): accumulate
-    // text from text_delta events, break on done. Pre-0.30 the accumulated
-    // string was empty. Post-0.30 it matches the model's full utterance.
     restoreFetch = stubFetch(mockSSEResponse([
       { content: 'Hello' },
       { content: '!' },
@@ -213,12 +173,11 @@ describe('estimateMessageTokens', () => {
   test('counts plain text messages at chars/4', () => {
     const messages = [{ role: 'user', content: 'x'.repeat(400) }];
     const estimate = estimateMessageTokens(messages);
-    // JSON overhead (role/content keys, quotes) rides along with the 400 chars.
     assert.ok(estimate >= 100 && estimate < 120, `got ${estimate}`);
   });
 
   test('counts an image_url part flat instead of chars/4 over its base64', () => {
-    const base64 = 'A'.repeat(120_000); // ~90 KB image → ~30k tok under chars/4
+    const base64 = 'A'.repeat(120_000);
     const messages = [{
       role: 'user',
       content: [

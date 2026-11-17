@@ -1,17 +1,9 @@
-/**
- * User notification tool
- */
 import type {
   AgentContext,
   DbConfig,
   ToolDefinition,
 } from "../types.js";
 
-/**
- * Database manager surface used by the notify tool. Modeled structurally from
- * usage here; the shared DatabaseManager interface covers the virtual
- * filesystem methods, while this covers notifications.
- */
 interface NotifyDatabaseManager {
   createNotification(
     dbType: string,
@@ -22,14 +14,12 @@ interface NotifyDatabaseManager {
   ): Promise<unknown>;
 }
 
-/** Context shape after narrowing for the notify tool. */
 interface NotifyContext {
   databaseManager: NotifyDatabaseManager;
   dbConfig: DbConfig;
   userID: string;
 }
 
-/** Runtime guard: does the value expose the notification method? */
 function isNotifyDatabaseManager(
   value: unknown,
 ): value is NotifyDatabaseManager {
@@ -39,10 +29,6 @@ function isNotifyDatabaseManager(
   return typeof createNotification === "function";
 }
 
-/**
- * Narrow an AgentContext into the notify-tool context, or return null when the
- * database manager is not available.
- */
 function resolveContext(context: AgentContext): NotifyContext | null {
   const dm = context.databaseManager;
   if (!isNotifyDatabaseManager(dm)) return null;
@@ -54,7 +40,6 @@ function resolveContext(context: AgentContext): NotifyContext | null {
   };
 }
 
-/** Extract a string error message from an unknown thrown value. */
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }

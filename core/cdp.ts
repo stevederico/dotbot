@@ -1,25 +1,17 @@
-// core/cdp.js
-// Minimal Chrome DevTools Protocol client using Node.js built-in WebSocket.
-// Zero external dependencies - requires Node.js 22+.
 
 /// <reference types="node" />
 
-/** A pending CDP request awaiting its matching response. */
 interface PendingRequest {
   resolve: (result: CDPResult) => void;
   reject: (err: Error) => void;
 }
 
-/** Result payload of a CDP command (loose: shapes vary by method). */
 type CDPResult = Record<string, unknown>;
 
-/** Parameters of an inbound CDP event. */
 type CDPEventParams = Record<string, unknown>;
 
-/** Handler invoked when a subscribed CDP event arrives. */
 type CDPEventHandler = (params: CDPEventParams) => void;
 
-/** A parsed inbound CDP protocol message. */
 interface CDPMessage {
   id?: number;
   error?: { message: string };
@@ -28,64 +20,53 @@ interface CDPMessage {
   params?: CDPEventParams;
 }
 
-/** Element location returned by selector queries. */
 interface ElementInfo {
   x: number;
   y: number;
   nodeId: number;
 }
 
-/** Options for screenshot(). */
 interface ScreenshotOptions {
   fullPage?: boolean;
 }
 
-/** Options for retry(). */
 interface RetryOptions {
   retries?: number;
   delay?: number;
   maxDelay?: number;
 }
 
-/** Options for waitForNetworkIdle(). */
 interface NetworkIdleOptions {
   timeout?: number;
   idleTime?: number;
 }
 
-/** Options for waitForVisible() / fillWithRetry(). */
 interface WaitOptions {
   timeout?: number;
 }
 
-/** Options for clickWithRetry(). */
 interface ClickWithRetryOptions {
   timeout?: number;
   retries?: number;
 }
 
-/** CDP key event descriptor. */
 interface KeyInfo {
   key: string;
   code: string;
   keyCode?: number;
 }
 
-/** A CDP box-model quad: [x1, y1, x2, y2, x3, y3, x4, y4]. */
 type Quad = [number, number, number, number, number, number, number, number];
 
-/** A box-model box (content/border) once validated from a CDP response. */
 interface BoxModel {
   content: Quad;
   border: Quad;
 }
 
-/** Type guard: value is a non-null object usable as a string-keyed record. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-/** Narrow an unknown value to an 8-number box-model quad. */
 function asQuad(value: unknown): Quad | null {
   if (!Array.isArray(value) || value.length < 8) return null;
   for (let i = 0; i < 8; i++) {
@@ -97,11 +78,6 @@ function asQuad(value: unknown): Quad | null {
   ];
 }
 
-/**
- * Narrow a DOM.getBoxModel response to a validated BoxModel.
- * Returns null when the `model` field or its quads are missing/malformed,
- * preserving the original `if (!model)` guard behavior at call sites.
- */
 function asBoxModel(boxes: CDPResult): BoxModel | null {
   const model = boxes.model;
   if (!isRecord(model)) return null;
@@ -111,10 +87,6 @@ function asBoxModel(boxes: CDPResult): BoxModel | null {
   return { content, border };
 }
 
-/**
- * Narrow an unknown JSON parse result to a CDP message.
- * Validates only the fields we read; everything else stays optional.
- */
 function asCDPMessage(value: unknown): CDPMessage {
   if (!isRecord(value)) {
     return {};
@@ -136,7 +108,6 @@ function asCDPMessage(value: unknown): CDPMessage {
   return msg;
 }
 
-/** Read a numeric field from an unknown object, returning a default if absent. */
 function numField(obj: unknown, key: string, fallback: number): number {
   if (isRecord(obj)) {
     const v = obj[key];
@@ -145,10 +116,6 @@ function numField(obj: unknown, key: string, fallback: number): number {
   return fallback;
 }
 
-/**
- * Lightweight CDP client for browser automation.
- * Communicates with Chrome via DevTools Protocol over WebSocket.
- */
 export class CDPClient {
   wsUrl: string;
   ws: WebSocket | null;
@@ -156,10 +123,6 @@ export class CDPClient {
   pending: Map<number, PendingRequest>;
   eventHandlers: Map<string, Set<CDPEventHandler>>;
 
-  /**
-   * Create a CDP client instance.
-   * @param wsUrl - WebSocket debugger URL from Chrome
-   */
   constructor(wsUrl: string) {
     this.wsUrl = wsUrl;
     this.ws = null;
@@ -168,12 +131,8 @@ export class CDPClient {
     this.eventHandlers = new Map();
   }
 
-  /**
-   * Connect to the browser's WebSocket debugger endpoint.
-   */
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      // Use Node.js 22+ native WebSocket (global, browser-compatible API)
       this.ws = new WebSocket(this.wsUrl);
 
       this.ws.addEventListener('open', () => {
@@ -191,7 +150,6 @@ export class CDPClient {
           typeof event.data === "string" ? JSON.parse(event.data) : null;
         const msg = asCDPMessage(data);
 
-        // Handle responses to our requests
         if (msg.id !== undefined) {
           const handler = this.pending.get(msg.id);
           if (handler) {
@@ -204,7 +162,6 @@ export class CDPClient {
           }
         }
 
-        // Handle events
         if (msg.method) {
           const handlers = this.eventHandlers.get(msg.method);
           if (handlers) {
@@ -216,7 +173,6 @@ export class CDPClient {
       });
 
       this.ws.addEventListener('close', () => {
-        // Reject all pending requests
         for (const [, handler] of this.pending) {
           handler.reject(new Error('CDP connection closed'));
         }
@@ -225,19 +181,12 @@ export class CDPClient {
     });
   }
 
-  /**
-   * Send a CDP command and wait for response.
-   * @param method - CDP method name (e.g., 'Page.navigate')
-   * @param params - Command parameters
-   * @param timeout - Timeout in ms (default 30s)
-   * @returns Command result
-   */
   async send(
     method: string,
     params: CDPEventParams = {},
     timeout = 30000,
   ): Promise<CDPResult> {
-    if (!this.ws || this.ws.readyState !== 1) { // 1 = OPEN
+    if (!this.ws || this.ws.readyState !== 1) {
       throw new Error('CDP not connected');
     }
     const ws = this.ws;
@@ -265,11 +214,6 @@ export class CDPClient {
     });
   }
 
-  /**
-   * Subscribe to a CDP event.
-   * @param event - Event name (e.g., 'Page.loadEventFired')
-   * @param handler - Event handler function
-   */
   on(event: string, handler: CDPEventHandler): void {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, new Set());
@@ -280,11 +224,6 @@ export class CDPClient {
     }
   }
 
-  /**
-   * Unsubscribe from a CDP event.
-   * @param event - Event name
-   * @param handler - Handler to remove
-   */
   off(event: string, handler: CDPEventHandler): void {
     const handlers = this.eventHandlers.get(event);
     if (handlers) {
@@ -292,20 +231,11 @@ export class CDPClient {
     }
   }
 
-  /**
-   * Navigate to a URL.
-   * @param url - URL to navigate to
-   * @returns Navigation result with frameId
-   */
   async navigate(url: string): Promise<CDPResult> {
     await this.send('Page.enable');
     return this.send('Page.navigate', { url });
   }
 
-  /**
-   * Wait for the page to finish loading.
-   * @param timeout - Timeout in ms
-   */
   async waitForLoad(timeout = 30000): Promise<void> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -323,11 +253,6 @@ export class CDPClient {
     });
   }
 
-  /**
-   * Evaluate JavaScript in the page context.
-   * @param expression - JavaScript expression to evaluate
-   * @returns Result value
-   */
   async evaluate(expression: string): Promise<unknown> {
     await this.send('Runtime.enable');
     const result = await this.send('Runtime.evaluate', {
@@ -354,32 +279,23 @@ export class CDPClient {
     return undefined;
   }
 
-  /** Get the page title. */
   async getTitle(): Promise<unknown> {
     return this.evaluate('document.title');
   }
 
-  /** Get the current URL. */
   async getUrl(): Promise<unknown> {
     return this.evaluate('window.location.href');
   }
 
-  /** Get text content of the page body. */
   async getBodyText(): Promise<unknown> {
     return this.evaluate('document.body?.innerText || ""');
   }
 
-  /** Get text content of an element by CSS selector. */
   async getText(selector: string): Promise<unknown> {
     const escaped = selector.replace(/"/g, '\\"');
     return this.evaluate(`document.querySelector("${escaped}")?.innerText || ""`);
   }
 
-  /**
-   * Query a selector and return element info for clicking.
-   * @param selector - CSS selector
-   * @returns Element center coordinates
-   */
   async querySelector(selector: string): Promise<ElementInfo | null> {
     await this.send('DOM.enable');
     const doc = await this.send('DOM.getDocument');
@@ -396,7 +312,6 @@ export class CDPClient {
     const model = asBoxModel(boxes);
     if (!model) return null;
 
-    // Get center point of the content box
     const content = model.content;
     const x = (content[0] + content[2] + content[4] + content[6]) / 4;
     const y = (content[1] + content[3] + content[5] + content[7]) / 4;
@@ -404,11 +319,6 @@ export class CDPClient {
     return { x, y, nodeId };
   }
 
-  /**
-   * Find element by text content.
-   * @param text - Text to search for
-   * @param exact - Exact match (default: false)
-   */
   async getByText(text: string, exact = false): Promise<ElementInfo | null> {
     const escaped = text.replace(/"/g, '\\"').replace(/\n/g, '\\n');
     const xpath = exact
@@ -450,11 +360,6 @@ export class CDPClient {
     return { x, y, nodeId: firstNodeId };
   }
 
-  /**
-   * Click at specific coordinates.
-   * @param x - X coordinate
-   * @param y - Y coordinate
-   */
   async click(x: number, y: number): Promise<void> {
     await this.send('Input.dispatchMouseEvent', {
       type: 'mousePressed',
@@ -472,10 +377,6 @@ export class CDPClient {
     });
   }
 
-  /**
-   * Type text character by character.
-   * @param text - Text to type
-   */
   async type(text: string): Promise<void> {
     for (const char of text) {
       await this.send('Input.dispatchKeyEvent', {
@@ -489,10 +390,6 @@ export class CDPClient {
     }
   }
 
-  /**
-   * Press a special key (Enter, Tab, etc).
-   * @param key - Key name
-   */
   async press(key: string): Promise<void> {
     const keyMap: Record<string, KeyInfo> = {
       'Enter': { key: 'Enter', code: 'Enter', keyCode: 13 },
@@ -513,19 +410,12 @@ export class CDPClient {
     });
   }
 
-  /**
-   * Focus an input element and fill it with text.
-   * @param selector - CSS selector for the input
-   * @param text - Text to fill
-   */
   async fill(selector: string, text: string): Promise<void> {
     const el = await this.querySelector(selector);
     if (!el) throw new Error(`Input not found: ${selector}`);
 
-    // Focus the element
     await this.send('DOM.focus', { nodeId: el.nodeId });
 
-    // Clear existing value
     await this.evaluate(`document.querySelector("${selector.replace(/"/g, '\\"')}").value = ""`);
 
     // Type the text

@@ -1,7 +1,3 @@
-// core/compaction.js
-// Session auto-compaction: summarizes old messages when context nears provider limits.
-// Runs before trimMessages as an intelligent alternative to hard truncation.
-// Operates on standard-format messages (see normalize.js).
 
 /// <reference types="node" />
 
@@ -14,26 +10,22 @@ import type {
   ProviderFormat,
 } from "../types.js";
 
-/** Options for summarizeMessages(). */
 interface SummarizeOptions {
   signal?: AbortSignal;
   providers?: ProvidersMap;
 }
 
-/** Options for compactMessages(). */
 interface CompactOptions {
   providerId?: string;
   signal?: AbortSignal;
   providers?: ProvidersMap;
 }
 
-/** Result of compactMessages(). */
 interface CompactResult {
   messages: Message[];
   compacted: boolean;
 }
 
-/** Summarization request body sent to the provider's chat endpoint. */
 interface SummaryRequestBody {
   model: string;
   max_tokens: number;
@@ -41,12 +33,10 @@ interface SummaryRequestBody {
   messages: Message[];
 }
 
-/** A compaction summary message — a standard user message flagged with _compaction. */
 interface CompactionSummaryMessage extends Message {
   _compaction: true;
 }
 
-/** Max context window tokens per provider family. */
 const CONTEXT_LIMITS: Record<string, number> = {
   anthropic: 180000,
   openai: 120000,
@@ -55,28 +45,16 @@ const CONTEXT_LIMITS: Record<string, number> = {
   local: 6000,
 };
 
-/** Number of recent messages to always preserve verbatim. */
 const RECENT_TO_KEEP = 20;
 
-/** Compaction triggers when estimated tokens exceed this fraction of the context limit. */
 const COMPACT_THRESHOLD = 0.7;
 
-/** Cheapest model per provider, used for summarization calls. */
 const CHEAP_MODELS: Record<string, string> = {
   xai: "grok-4-1-fast-non-reasoning",
   anthropic: "claude-3-5-haiku-20241022",
   openai: "gpt-5-nano",
 };
 
-/**
- * Estimate token count for an array of standard-format messages.
- *
- * Uses a 4-chars-per-token heuristic. Counts content, toolCalls
- * (name + input + result), and thinking fields.
- *
- * @param messages - Conversation messages in standard format.
- * @returns Estimated token count.
- */
 export function estimateTokens(messages: Message[]): number {
   let chars = 0;
 
@@ -103,15 +81,6 @@ export function estimateTokens(messages: Message[]): number {
   return Math.ceil(chars / 4);
 }
 
-/**
- * Naive fallback summary when no AI provider is available.
- *
- * Extracts the first 100 characters of each user message, tool call names,
- * and tool results, producing a bullet-point summary.
- *
- * @param messages - Standard-format messages to summarize.
- * @returns Plain-text summary.
- */
 function naiveSummary(messages: Message[]): string {
   const lines: string[] = [];
 
@@ -136,23 +105,10 @@ function naiveSummary(messages: Message[]): string {
     : "Previous conversation context (details unavailable).";
 }
 
-/**
- * Summarize old messages using the cheapest available AI provider.
- *
- * Checks provider keys in order: xAI, Anthropic, OpenAI.
- * Falls back to naiveSummary() if no provider is configured.
- * Messages are expected in standard format; converted to provider format for the API call.
- *
- * @param oldMessages - Standard-format messages to summarize.
- * @param options.signal - Optional abort signal.
- * @param options.providers - Provider config with API keys.
- * @returns Summary text.
- */
 async function summarizeMessages(
   oldMessages: Message[],
   { signal, providers = {} }: SummarizeOptions = {},
 ): Promise<string> {
-  // Build plain-text transcript from standard-format messages
   const transcript = oldMessages
     .map((msg) => {
       const role = msg.role || "unknown";
@@ -176,7 +132,6 @@ async function summarizeMessages(
     })
     .join("\n");
 
-  // Find cheapest available provider
   const providerOrder = ["xai", "anthropic", "openai"];
 
   let selectedProvider: Provider | null = null;
@@ -199,7 +154,6 @@ async function summarizeMessages(
   const summaryPrompt =
     "Summarize this conversation concisely. Preserve: key decisions, user facts, tool results, and any important outcomes. Omit: greetings, thinking steps, redundant tool calls. Output only the summary, no preamble.";
 
-  // Build summarization request in standard format, then convert for the provider
   const summaryMessages: Message[] = [
     { role: "system", content: summaryPrompt },
     { role: "user", content: transcript },
@@ -251,19 +205,6 @@ async function summarizeMessages(
   }
 }
 
-/**
- * Compact a conversation's messages if approaching the provider's context limit.
- *
- * Splits messages into [system prompt] + [old messages] + [recent N messages],
- * summarizes old messages via the cheapest AI provider, and returns a compacted
- * array. If under the threshold, returns the original messages unchanged.
- *
- * @param messages - Full conversation history including system prompt.
- * @param options.providerId - Provider ID for context limit lookup (default 'ollama').
- * @param options.signal - Optional abort signal.
- * @param options.providers - Provider configuration with API keys: { anthropic: { apiKey }, openai: { apiKey }, xai: { apiKey } }
- * @returns Compacted result.
- */
 export async function compactMessages(
   messages: Message[],
   { providerId = "ollama", signal, providers = {} }: CompactOptions = {},
@@ -275,7 +216,6 @@ export async function compactMessages(
     return { messages, compacted: false };
   }
 
-  // Need at least system + RECENT_TO_KEEP + 1 old message to compact
   if (messages.length <= RECENT_TO_KEEP + 2) {
     return { messages, compacted: false };
   }

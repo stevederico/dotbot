@@ -1,10 +1,4 @@
 /// <reference types="node" />
-/**
- * Cron task handler for dotbot.
- *
- * Reusable cron task executor that handles session resolution, stale user
- * gates, task injection, and notification hooks.
- */
 
 import { compactMessages } from './compaction.js';
 import type {
@@ -18,7 +12,6 @@ import type {
   TaskStore,
 } from '../types.js';
 
-/** Options passed to agent.chat(). */
 export interface AgentChatOptions {
   sessionId: string;
   message: string;
@@ -27,25 +20,17 @@ export interface AgentChatOptions {
   context?: AgentContext;
 }
 
-/** Agent instance with a streaming chat() method. */
 export interface Agent {
   chat(options: AgentChatOptions): AsyncGenerator<AgentEvent>;
 }
 
-/**
- * Cron store instance accepted by the cron handler. The handler holds the
- * store but doesn't call any methods on it directly, so it reuses the shared
- * CronStore contract (concrete adapters are assignable to it).
- */
 export type CronHandlerCronStore = CronStore;
 
-/** A single step within a multi-step task. */
 export interface TaskStep {
   text: string;
   done: boolean;
 }
 
-/** A task document fetched for cron task execution. */
 export interface TaskDoc {
   _id?: string;
   id?: string;
@@ -57,79 +42,51 @@ export interface TaskDoc {
   steps?: TaskStep[];
 }
 
-/**
- * A cron task object passed to the handler when a cron job fires.
- *
- * The scoping fields are `string | null` (not just optional) because the
- * SQLiteCronStore passes a fully-populated record whose unset columns are
- * `null`. The handler only ever truthy-checks these fields, so null and
- * undefined behave identically at runtime.
- */
 export interface CronTask {
-  /** Task name (e.g., "heartbeat", "task_step"). */
   name: string;
-  /** User ID for user-level tasks. */
   userId?: string | null;
-  /** Session ID for session-scoped tasks. */
   sessionId?: string | null;
-  /** Task ID for task_step cron jobs. */
   taskId?: string | null;
-  /** Task prompt. */
   prompt?: string;
 }
 
-/** Notification payload dispatched via hooks.onNotification. */
 export interface NotificationPayload {
   title: string;
   body: string;
   type: string;
 }
 
-/** Filter passed to tasksFinder / taskStore.findTasks. */
 export interface TaskFilter {
   status: string[];
 }
 
-/** Host-specific hooks for the cron handler. */
 export interface CronHandlerHooks {
   onNotification?: (userId: string, payload: NotificationPayload) => Promise<void>;
   taskFetcher?: (userId: string, taskId: string) => Promise<TaskDoc | null>;
   tasksFinder?: (userId: string, filter: TaskFilter) => Promise<TaskDoc[]>;
 }
 
-/** Options for createCronHandler(). */
 export interface CronHandlerOptions {
-  /** Session store instance. */
   sessionStore: SessionStore;
-  /** Cron store instance. */
   cronStore: CronHandlerCronStore;
-  /** Task store instance (optional). */
   taskStore?: TaskStore;
-  /** Memory store instance (optional). */
   memoryStore?: MemoryStore;
-  /** Provider API keys for compaction. */
   providers?: ProvidersMap;
-  /** Skip heartbeat if user idle longer than this (default: 24h). */
   staleThresholdMs?: number;
-  /** Title used when dispatching notifications via hooks.onNotification. */
   notificationTitle?: string;
-  /** Host-specific hooks. */
   hooks?: CronHandlerHooks;
 }
 
-/** Async handler for cron task execution, with setAgent attached. */
 export interface CronTaskHandler {
   (task: CronTask): Promise<void>;
   setAgent(agentInstance: Agent): void;
 }
 
-/** Read a string-valued field from a Session (whose values are `unknown`). */
 function sessionString(session: Session, key: string): string | undefined {
   const value: unknown = session[key];
   return typeof value === 'string' ? value : undefined;
 }
 
-/** Narrow an unknown store result to a TaskDoc. */
 function isTaskDoc(value: unknown): value is TaskDoc {
   return (
     typeof value === 'object' &&
@@ -138,9 +95,6 @@ function isTaskDoc(value: unknown): value is TaskDoc {
   );
 }
 
-/**
- * Create a cron task handler function.
- */
 export function createCronHandler({
   sessionStore,
   cronStore,
@@ -151,30 +105,20 @@ export function createCronHandler({
   notificationTitle = 'Assistant',
   hooks = {},
 }: CronHandlerOptions): CronTaskHandler {
-  // Agent reference - will be set after init() creates the agent
   let agent: Agent | null = null;
 
-  /**
-   * Set the agent instance (called by init() after agent creation).
-   */
   function setAgent(agentInstance: Agent): void {
     agent = agentInstance;
   }
 
-  /**
-   * Handle a cron task firing.
-   */
   async function handleTaskFire(task: CronTask): Promise<void> {
     console.log(`[cron] processing task ${task.name} (userId=${task.userId || 'none'}, sessionId=${task.sessionId || 'none'})`);
 
-    // Skip if agent not initialized yet
     if (!agent) {
       console.warn('[cron] task skipped - agent not initialized');
       return;
     }
 
-    // Resolve session: user-level heartbeats find the most recent session,
-    // session-scoped tasks use the explicit sessionId.
     let session: Session | null | undefined;
     if (task.userId) {
       session = await sessionStore.getOrCreateDefaultSession(task.userId);
@@ -193,7 +137,6 @@ export function createCronHandler({
       return;
     }
 
-    // Stale user check: skip heartbeat if user hasn't interacted recently
     const updatedAt = sessionString(session, 'updatedAt');
     if (task.name === 'heartbeat' && updatedAt) {
       const idleMs = Date.now() - new Date(updatedAt).getTime();
@@ -203,23 +146,19 @@ export function createCronHandler({
       }
     }
 
-    // Build task content depending on task type
     const taskContent = await buildTaskContent(task, session);
     if (!taskContent) return;
 
-    // Add message to session
     await sessionStore.addMessage(sessionId, {
       role: 'user',
       content: taskContent,
     });
 
-    // Re-fetch session to pick up the added message
     const updatedSession = await sessionStore.getSessionInternal(sessionId);
     if (!updatedSession) return;
     const updatedSessionId = sessionString(updatedSession, 'id') ?? sessionId;
     const providerId = updatedSession.provider || 'ollama';
 
-    // Compact old messages before running agent loop
     const compacted = await compactMessages(updatedSession.messages, {
       providerId,
       providers,
@@ -234,11 +173,10 @@ export function createCronHandler({
       });
     }
 
-    // Run the agent chat loop
     let finalText = '';
     for await (const event of agent.chat({
       sessionId: updatedSessionId,
-      message: '', // Message already added to session
+      message: '',
       provider: providerId,
       model: updatedSession.model,
       context: {
@@ -253,7 +191,6 @@ export function createCronHandler({
       }
     }
 
-    // Create notification if the agent produced meaningful output
     const trimmed = finalText.trim();
     if (trimmed && trimmed.length > 10 && updatedSession.owner && hooks.onNotification) {
       try {
@@ -271,29 +208,18 @@ export function createCronHandler({
     }
   }
 
-  /**
-   * Build the content for a cron task based on its type.
-   *
-   * @returns Task content or null to skip.
-   */
   async function buildTaskContent(task: CronTask, session: Session): Promise<string | null> {
     if (task.name === 'task_step' && task.taskId) {
-      // Task step continuation — inject targeted prompt for the specific task
       return await buildTaskStepContent(task, session);
     }
 
     if (task.name === 'heartbeat' && session.owner) {
-      // Heartbeat — check for auto-mode tasks with pending steps
       return await buildHeartbeatContent(task, session);
     }
 
-    // Default: use the task prompt
     return `[Heartbeat] ${task.prompt}`;
   }
 
-  /**
-   * Build content for a task_step cron job.
-   */
   async function buildTaskStepContent(task: CronTask, session: Session): Promise<string | null> {
     try {
       let taskDoc: TaskDoc | null | undefined;
@@ -332,9 +258,6 @@ export function createCronHandler({
     }
   }
 
-  /**
-   * Build content for a heartbeat cron job.
-   */
   async function buildHeartbeatContent(task: CronTask, session: Session): Promise<string | null> {
     let taskContent = `[Heartbeat] ${task.prompt}`;
 
@@ -350,23 +273,17 @@ export function createCronHandler({
         }
       }
 
-      // Skip the LLM call entirely when there's nothing to discuss. A heartbeat
-      // with no active tasks is a waste of tokens on every provider (and is
-      // especially expensive on cloud providers that charge per call). The
-      // caller at handleTaskFire() treats a null return as "skip this tick".
       if (tasks.length === 0) {
         console.log(`[cron] heartbeat for ${session.owner}: no active tasks, skipping AI call`);
         return null;
       }
 
-      // Check if any task is in auto mode with pending steps
       const autoTask = tasks.find(t => t.mode === 'auto' && t.steps?.some(s => !s.done));
       if (autoTask && autoTask.steps) {
         const doneCount = autoTask.steps.filter(s => s.done).length;
         const nextStep = autoTask.steps.find(s => !s.done);
         taskContent = `[Heartbeat] Auto-mode task "${autoTask.description}" has pending steps (${doneCount}/${autoTask.steps.length} done). Call dot_task_work with task_id "${autoTask._id || autoTask.id}" to execute: "${nextStep?.text}"`;
       } else {
-        // List all active tasks
         const lines = tasks.map(t => {
           let line = `• [${t.priority}] ${t.description}`;
           if (t.mode) line += ` [${t.mode}]`;
@@ -383,8 +300,6 @@ export function createCronHandler({
         taskContent += `\n\nActive tasks:\n${lines.join('\n')}`;
       }
     } catch (err) {
-      // Fail closed: if we can't fetch tasks, skip this heartbeat rather
-      // than call the LLM with a meaningless default prompt.
       console.error('[cron] failed to fetch tasks for heartbeat:', err instanceof Error ? err.message : err);
       return null;
     }
@@ -392,7 +307,6 @@ export function createCronHandler({
     return taskContent;
   }
 
-  // Return handler with setAgent method attached
   const handler: CronTaskHandler = Object.assign(handleTaskFire, { setAgent });
   return handler;
 }

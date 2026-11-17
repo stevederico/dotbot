@@ -14,7 +14,6 @@ import type {
   StoredEvent,
 } from '../types.js';
 
-/** Recursively coerce an unknown value into a JsonValue (drops non-JSON values). */
 function toJsonValue(value: unknown): JsonValue {
   if (value === null) return null;
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
@@ -33,7 +32,6 @@ function toJsonValue(value: unknown): JsonValue {
   return null;
 }
 
-/** Parse a JSON string into a JsonObject, returning {} on failure or non-object. */
 function parseJsonObject(text: string): JsonObject {
   try {
     const parsed: unknown = JSON.parse(text);
@@ -45,19 +43,16 @@ function parseJsonObject(text: string): JsonObject {
       return out;
     }
   } catch {
-    // fall through
   }
   return {};
 }
 
-/** Coerce a raw SQLite cell to a string. */
 function asString(value: SQLOutputValue | undefined): string {
   if (typeof value === 'string') return value;
   if (value === null || value === undefined) return '';
   return String(value);
 }
 
-/** Coerce a raw SQLite cell to a number. */
 function asNumber(value: SQLOutputValue | undefined): number {
   if (typeof value === 'number') return value;
   if (typeof value === 'bigint') return Number(value);
@@ -67,12 +62,6 @@ function asNumber(value: SQLOutputValue | undefined): number {
 
 export type { EventSummary, EventBreakdownPeriod } from '../types.js';
 
-/**
- * SQLite-backed EventStore implementation
- *
- * Uses Node.js 22.5+ built-in sqlite module for zero-dependency event storage.
- * Timestamps stored as INTEGER (Unix ms), data as JSON TEXT column.
- */
 export class SQLiteEventStore extends EventStore {
   db: DatabaseSync | null;
 
@@ -81,11 +70,6 @@ export class SQLiteEventStore extends EventStore {
     this.db = null;
   }
 
-  /**
-   * Initialize SQLite event store
-   *
-   * @param dbPath - Path to SQLite database file
-   */
   async init(dbPath: string): Promise<void> {
     this.db = new DatabaseSync(dbPath);
 
@@ -106,11 +90,6 @@ export class SQLiteEventStore extends EventStore {
     console.log('[events] SQLiteEventStore initialized');
   }
 
-  /**
-   * Log an event
-   *
-   * @returns Created event document
-   */
   async logEvent({ userId, type, data = {}, timestamp }: LogEventParams): Promise<StoredEvent> {
     if (!this.db) throw new Error('Events not initialized. Call init() first.');
 
@@ -138,11 +117,6 @@ export class SQLiteEventStore extends EventStore {
     return event;
   }
 
-  /**
-   * Query events with filters
-   *
-   * @returns Matching events sorted by timestamp desc
-   */
   async query({ userId, type, startDate, endDate, limit = 100 }: EventQueryParams): Promise<StoredEvent[]> {
     if (!this.db) throw new Error('Events not initialized. Call init() first.');
 
@@ -161,7 +135,6 @@ export class SQLiteEventStore extends EventStore {
     }
 
     if (endDate) {
-      // End of day for endDate
       const endTs = new Date(endDate).getTime() + 86400000 - 1;
       sql += ' AND timestamp <= ?';
       params.push(endTs);
@@ -176,15 +149,9 @@ export class SQLiteEventStore extends EventStore {
     return rows.map(row => this._rowToEvent(row));
   }
 
-  /**
-   * Get aggregated usage statistics
-   *
-   * @returns Summary with total count and grouped breakdown
-   */
   async summary({ userId, startDate, endDate, groupBy = 'type' }: EventSummaryParams): Promise<EventSummary> {
     if (!this.db) throw new Error('Events not initialized. Call init() first.');
 
-    // Build WHERE clause
     let whereClause = 'WHERE user_id = ?';
     const params: SQLInputValue[] = [userId];
 
@@ -200,12 +167,10 @@ export class SQLiteEventStore extends EventStore {
       params.push(endTs);
     }
 
-    // Total count
     const countStmt = this.db.prepare(`SELECT COUNT(*) as total FROM events ${whereClause}`);
     const countResult = countStmt.get(...params);
     const total = asNumber(countResult?.total);
 
-    // Group by clause varies by groupBy parameter
     let groupByClause: string;
     let selectExpr: string;
     switch (groupBy) {
@@ -236,7 +201,6 @@ export class SQLiteEventStore extends EventStore {
     `);
     const groups = groupStmt.all(...params);
 
-    // Convert to object for type grouping, array for time-based grouping
     let breakdown: Record<string, number> | EventBreakdownPeriod[];
     if (groupBy === 'type') {
       const breakdownObj: Record<string, number> = {};
@@ -251,19 +215,16 @@ export class SQLiteEventStore extends EventStore {
       }));
     }
 
-    // Tool usage breakdown (if tool_call events exist)
     const toolStmt = this.db.prepare(`
       SELECT data FROM events ${whereClause} AND type = 'tool_call'
     `);
     const toolParams = [...params, 'tool_call'];
-    // Rebuild params for tool query
     const toolWhereParams = [...params];
 
     const toolCountStmt = this.db.prepare(`
       SELECT data FROM events ${whereClause.replace('user_id = ?', 'user_id = ? AND type = ?')}
     `.replace('AND type = ?', ''));
 
-    // Simpler approach: get all tool_call events and aggregate in JS
     const toolEventsStmt = this.db.prepare(`
       SELECT data FROM events WHERE user_id = ? AND type = 'tool_call'
       ${startDate ? 'AND timestamp >= ?' : ''}
@@ -284,7 +245,6 @@ export class SQLiteEventStore extends EventStore {
             : 'unknown';
         toolCounts[toolName] = (toolCounts[toolName] || 0) + 1;
       } catch {
-        // Skip malformed data
       }
     }
 
@@ -295,13 +255,6 @@ export class SQLiteEventStore extends EventStore {
     };
   }
 
-  /**
-   * Delete events older than a given date
-   *
-   * @param userId - User ID
-   * @param beforeDate - ISO date cutoff
-   * @returns Delete result with count
-   */
   async deleteOldEvents(userId: string, beforeDate: string): Promise<{ deletedCount: number }> {
     if (!this.db) throw new Error('Events not initialized. Call init() first.');
 
@@ -312,11 +265,6 @@ export class SQLiteEventStore extends EventStore {
     return { deletedCount: Number(result.changes) };
   }
 
-  /**
-   * Convert SQLite row to event object
-   *
-   * @private
-   */
   _rowToEvent(row: Record<string, SQLOutputValue>): StoredEvent {
     const data: JsonObject = parseJsonObject(asString(row.data));
 
@@ -330,9 +278,6 @@ export class SQLiteEventStore extends EventStore {
     };
   }
 
-  /**
-   * Close the database connection and checkpoint WAL.
-   */
   close(): void {
     if (this.db) {
       try {

@@ -1,9 +1,3 @@
-/**
- * Task Management Tools
- *
- * Multi-step autonomous task execution with progress tracking.
- * Tasks can run in auto mode where steps execute sequentially via cron.
- */
 
 import type {
   AgentContext,
@@ -13,15 +7,12 @@ import type {
   ToolResult,
 } from "../types.js";
 
-/** Delay (ms) before scheduling the next auto-mode step via cron. */
-const AUTO_STEP_DELAY_MS = 5 * 1000; // 5 seconds between auto steps
+const AUTO_STEP_DELAY_MS = 5 * 1000;
 
-/** Extract a human-readable message from an unknown thrown value. */
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** A normalized step on a task (as stored by dot_task_plan / dot_task_work). */
 interface TaskStep {
   text: string;
   action: string;
@@ -29,20 +20,14 @@ interface TaskStep {
   result: string | null;
   startedAt: string | null;
   completedAt: string | null;
-  /** Index signature so a TaskStep is assignable to JsonValue (it is plain JSON). */
   [key: string]: JsonValue;
 }
 
-/** A step object as received from the dot_task_plan tool input. */
 interface TaskPlanStepInput {
   text: string;
   action?: string;
 }
 
-/**
- * A task record as returned by the TaskStore. Modeled structurally from the
- * fields read in this module; the underlying adapter may carry more.
- */
 interface TaskRecord {
   id?: string;
   _id?: { toString(): string };
@@ -55,14 +40,12 @@ interface TaskRecord {
   progress?: number;
 }
 
-/** Write result shape shared by Mongo-style and SQLite-style adapters. */
 interface WriteResult {
   modifiedCount?: number;
   deletedCount?: number;
   changes?: number;
 }
 
-/** Aggregate task statistics returned by TaskStore.getTaskStats(). */
 interface TaskStats {
   total: number;
   pending: number;
@@ -72,11 +55,6 @@ interface TaskStats {
   by_category: Record<string, number>;
 }
 
-/**
- * The concrete TaskStore method surface used by these tools. The shared
- * `TaskStore` type in types.js is intentionally loose (index signature), so we
- * narrow it to this richer local view before calling.
- */
 interface TaskStoreApi {
   createTask(task: Record<string, unknown>): Promise<TaskRecord>;
   getTasks(userId: string | undefined, filters: JsonObject): Promise<TaskRecord[]>;
@@ -91,11 +69,6 @@ interface TaskStoreApi {
   getTaskStats(userId: string | undefined): Promise<TaskStats>;
 }
 
-/**
- * Type guard narrowing the loose shared TaskStore to the local TaskStoreApi
- * method surface. The shared `TaskStore` type is intentionally loose, so we
- * verify the methods are callable before treating it as the richer interface.
- */
 function isTaskStore(store: unknown): store is TaskStoreApi {
   if (store === null || typeof store !== "object") return false;
   const methods = [
@@ -110,17 +83,10 @@ function isTaskStore(store: unknown): store is TaskStoreApi {
   return methods.every((m) => typeof Reflect.get(store, m) === "function");
 }
 
-/** Resolve a task's id from either the SQLite `id` or Mongo `_id`. */
 function taskIdOf(task: TaskRecord): string | undefined {
   return task.id ?? task._id?.toString();
 }
 
-/**
- * Assert an array element looked up by a validated index is present.
- * With noUncheckedIndexedAccess, indexed access is `T | undefined`; callers
- * derive the index from findIndex (already checked !== -1), so this guards an
- * unreachable case and narrows the type. Thrown errors are caught by callers.
- */
 function requireStep(step: TaskStep | undefined): TaskStep {
   if (!step) throw new Error("step index out of range");
   return step;
@@ -337,7 +303,6 @@ export const taskTools: ToolDefinition[] = [
           return "Task has no steps. Use dot_task_plan to add steps first.";
         }
 
-        // Find next undone step
         const stepIdx = task.steps.findIndex(s => !s.done);
         if (stepIdx === -1) {
           return "All steps are already complete. Use dot_task_complete to finish the task.";
@@ -345,7 +310,6 @@ export const taskTools: ToolDefinition[] = [
 
         const step = requireStep(task.steps[stepIdx]);
 
-        // Mark step as started
         const steps = [...task.steps];
         steps[stepIdx] = { ...step, startedAt: new Date().toISOString() };
 
@@ -392,7 +356,6 @@ export const taskTools: ToolDefinition[] = [
         const task = await taskStore.getTask(context.userID, input.task_id);
         if (!task) return "Task not found.";
 
-        // Find the current in-progress step
         const currentSteps = task.steps ?? [];
         const stepIdx = currentSteps.findIndex(s => s.startedAt && !s.done);
         if (stepIdx === -1) return "No in-progress step found. Call dot_task_work first.";
@@ -420,7 +383,6 @@ export const taskTools: ToolDefinition[] = [
 
         await taskStore.updateTask(context.userID, input.task_id, updates);
 
-        // In auto mode with remaining steps, schedule next step via cron
         if (!allDone && task.mode === "auto" && context.cronStore) {
           try {
             await context.cronStore.createTask({

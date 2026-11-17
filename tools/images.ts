@@ -1,23 +1,13 @@
-/**
- * Image generation and management tools
- */
 
 import type { ToolDefinition, JsonObject, AgentContext } from "../types.js";
 
-/**
- * Default model for Grok Imagine image generation
- */
 export const GROK_IMAGINE_MODEL = 'grok-imagine-image-beta';
 
-/** Options accepted by the image helpers. */
 export interface ImageGenerateOptions {
-  /** Abort signal. */
   signal?: AbortSignal;
-  /** Model override. */
   model?: string;
 }
 
-/** Result of generateImage(). */
 export interface GenerateImageResult {
   success: boolean;
   url?: string;
@@ -25,7 +15,6 @@ export interface GenerateImageResult {
   error?: string;
 }
 
-/** Result of extractVisualPrompt(). */
 export interface ExtractVisualPromptResult {
   success: boolean;
   prompt?: string;
@@ -36,7 +25,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-/** A stored agent-activity entry (image generation log row). */
 interface AgentActivityEntry {
   prompt?: string;
   url?: string;
@@ -44,7 +32,6 @@ interface AgentActivityEntry {
   timestamp?: number;
 }
 
-/** databaseManager surface used by the image tools (not part of DatabaseManager). */
 interface ImageActivityManager {
   getAgentActivity(
     dbType: string,
@@ -59,14 +46,6 @@ function hasGetAgentActivity(value: unknown): value is ImageActivityManager {
   return isRecord(value) && typeof value.getAgentActivity === "function";
 }
 
-/**
- * Generate an image using Grok Imagine API.
- * Shared helper that can be used by both agent tools and HTTP endpoints.
- *
- * @param prompt - Image description
- * @param apiKey - xAI API key
- * @param options - Generation options
- */
 export async function generateImage(
   prompt: string | undefined,
   apiKey: string | undefined,
@@ -116,14 +95,6 @@ export async function generateImage(
   }
 }
 
-/**
- * Extract visual themes from text and generate an image prompt.
- * Uses Grok to summarize text into a visual description.
- *
- * @param text - Text to extract visual themes from
- * @param apiKey - xAI API key
- * @param options - Extraction options
- */
 export async function extractVisualPrompt(
   text: string | undefined,
   apiKey: string | undefined,
@@ -184,14 +155,6 @@ Text: "${text.slice(0, 500)}"`
   }
 }
 
-/**
- * Generate an image from text, optionally extracting visual themes first.
- * Convenience wrapper combining extractVisualPrompt + generateImage.
- *
- * @param input - Direct prompt and/or source text
- * @param apiKey - xAI API key
- * @param options - Generation options
- */
 export async function generateImageFromText(
   { prompt, text }: { prompt?: string; text?: string },
   apiKey: string | undefined,
@@ -199,7 +162,6 @@ export async function generateImageFromText(
 ): Promise<GenerateImageResult> {
   let imagePrompt = prompt;
 
-  // If text provided without prompt, extract visual themes first
   if (text && !prompt) {
     const extracted = await extractVisualPrompt(text, apiKey, options);
     if (!extracted.success) {

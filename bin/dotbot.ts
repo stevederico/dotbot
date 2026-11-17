@@ -15,24 +15,8 @@ const patchedEmit = (event: string | symbol, ...args: unknown[]): boolean => {
   }
   return Reflect.apply(originalEmit, process, [event, ...args]);
 };
-// process.emit is a closed overload set whose "message"/"worker" overloads
-// return Process, not boolean, so no single rest-param function can be
-// structurally assignable to it. The runtime behavior (a transparent emit
-// wrapper) is correct; only the static overload shape is unrepresentable.
 // @ts-expect-error -- intentional override of the overloaded process.emit
 process.emit = patchedEmit;
-
-/**
- * dotbot CLI
- *
- * Usage:
- *   dotbot "What's the weather?"    One-shot query
- *   dotbot                          Interactive chat
- *   dotbot serve --port 3000        Start HTTP server
- *   dotbot --help                   Show help
- *
- * Requires Node.js 22+
- */
 
 import { parseArgs } from 'node:util';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -47,19 +31,15 @@ import { randomUUID } from 'node:crypto';
 import type { Provider, ToolDefinition, AgentEvent, AgentContext, Session, Message, JsonObject } from '../types.js';
 import { runTui } from './tui.js';
 
-// Read version from package.json
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// Compiled to dist/bin/, so package.json is two levels up at the repo root.
 const pkgRaw: unknown = JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8'));
 const VERSION: string =
   typeof pkgRaw === 'object' && pkgRaw !== null && 'version' in pkgRaw && typeof pkgRaw.version === 'string'
     ? pkgRaw.version
     : '';
 
-// Type of the lazily-imported dotbot library module.
 type DotbotModule = typeof import('../index.js');
 
-/** Bag of SQLite store constructors loaded lazily. */
 interface StoreConstructors {
   SQLiteSessionStore: DotbotModule['SQLiteSessionStore'];
   SQLiteCronStore: DotbotModule['SQLiteCronStore'];
@@ -69,15 +49,11 @@ interface StoreConstructors {
   SQLiteEventStore: DotbotModule['SQLiteEventStore'];
 }
 
-// Lazy-loaded modules (avoid SQLite import on --help)
 let stores: StoreConstructors | null = null;
 let coreTools: DotbotModule['coreTools'] | null = null;
 let AI_PROVIDERS: DotbotModule['AI_PROVIDERS'] | null = null;
 let agentLoop: DotbotModule['agentLoop'] | null = null;
 
-/**
- * Lazy-load dotbot modules.
- */
 async function loadModules(): Promise<void> {
   if (stores) return;
   const mod = await import('../index.js');
@@ -94,25 +70,21 @@ async function loadModules(): Promise<void> {
   agentLoop = mod.agentLoop;
 }
 
-/** Return the loaded store constructors, asserting loadModules() has run. */
 function requireStores(): StoreConstructors {
   if (!stores) throw new Error('dotbot modules not loaded');
   return stores;
 }
 
-/** Return the loaded core tools, asserting loadModules() has run. */
 function requireCoreTools(): DotbotModule['coreTools'] {
   if (!coreTools) throw new Error('dotbot modules not loaded');
   return coreTools;
 }
 
-/** Return the loaded provider registry, asserting loadModules() has run. */
 function requireProviders(): DotbotModule['AI_PROVIDERS'] {
   if (!AI_PROVIDERS) throw new Error('dotbot modules not loaded');
   return AI_PROVIDERS;
 }
 
-/** Return the loaded agent loop, asserting loadModules() has run. */
 function requireAgentLoop(): DotbotModule['agentLoop'] {
   if (!agentLoop) throw new Error('dotbot modules not loaded');
   return agentLoop;
@@ -121,7 +93,6 @@ const DEFAULT_PORT = 3000;
 const DEFAULT_DB = './dotbot.db';
 const CONFIG_PATH = join(homedir(), '.dotbotrc');
 
-/** Shape of the ~/.dotbotrc config file (all fields optional). */
 interface DotbotConfig {
   env?: Record<string, string>;
   provider?: string;
@@ -135,7 +106,6 @@ interface DotbotConfig {
   [key: string]: unknown;
 }
 
-/** Merged CLI options after combining flags, config file, and defaults. */
 interface CliOptions {
   help: boolean;
   version: boolean;
@@ -155,13 +125,11 @@ interface CliOptions {
   allow?: string[];
 }
 
-/** Result of fetching a provider's model list. */
 interface FetchModelsResult {
   ok: boolean;
   models: Array<{ id: string; name: string }>;
 }
 
-/** The set of store instances returned by initStores(). */
 interface InitializedStores {
   sessionStore: InstanceType<DotbotModule['SQLiteSessionStore']>;
   cronStore: InstanceType<DotbotModule['SQLiteCronStore']>;
@@ -175,17 +143,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-/** Narrow parsed JSON to the loose DotbotConfig shape. */
 function isConfigObject(value: unknown): value is DotbotConfig {
   return isRecord(value);
 }
 
-/** Narrow an arbitrary array to a Message[] (role-bearing records). */
 function isMessageArray(value: unknown[]): value is Message[] {
   return value.every((m) => isRecord(m) && typeof m.role === 'string');
 }
 
-// Spinner for tool execution feedback
 let spinnerInterval: ReturnType<typeof setInterval> | null = null;
 
 function startSpinner(): void {
@@ -207,9 +172,6 @@ function stopSpinner(text = 'done'): void {
   }
 }
 
-/**
- * Print help message.
- */
 function printHelp(): void {
   console.log(`
 dotbot v${VERSION} — AI agent CLI
@@ -283,11 +245,6 @@ Examples:
 `);
 }
 
-/**
- * Load config from ~/.dotbotrc if it exists.
- *
- * @returns {Object} Config object or empty object if not found
- */
 function loadConfig(): DotbotConfig {
   if (!existsSync(CONFIG_PATH)) {
     return {};
@@ -297,7 +254,6 @@ function loadConfig(): DotbotConfig {
     const parsed: unknown = JSON.parse(content);
     const config: DotbotConfig = isConfigObject(parsed) ? parsed : {};
 
-    // Inject saved API keys into process.env (don't override existing)
     if (config.env && typeof config.env === 'object') {
       for (const [key, value] of Object.entries(config.env)) {
         if (!process.env[key]) {
@@ -313,11 +269,6 @@ function loadConfig(): DotbotConfig {
   }
 }
 
-/**
- * Parse CLI arguments with config file fallback.
- *
- * @returns {Object} Merged CLI args and config values
- */
 function parseCliArgs(): CliOptions {
   const config = loadConfig();
 
@@ -342,8 +293,6 @@ function parseCliArgs(): CliOptions {
       },
     });
 
-    // Merge: CLI args > config file > hardcoded defaults
-    // Build sandbox domain allowlist from --allow flags, presets, and config
     const allowFlags = values.allow || [];
     const configAllow = config.sandboxAllow || [];
     const allAllow = [...allowFlags, ...configAllow];
@@ -366,12 +315,6 @@ function parseCliArgs(): CliOptions {
   }
 }
 
-/**
- * Prompt user for input via readline.
- *
- * @param {string} question - Prompt text
- * @returns {Promise<string>} User input
- */
 function askUser(question: string): Promise<string> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise<string>((resolve) => {
@@ -382,12 +325,6 @@ function askUser(question: string): Promise<string> {
   });
 }
 
-/**
- * Save or update a key in ~/.dotbotrc config file.
- *
- * @param {string} key - Config key
- * @param {*} value - Config value
- */
 function saveToConfig(key: string, value: unknown): void {
   let config: Record<string, unknown> = {};
   if (existsSync(CONFIG_PATH)) {
@@ -402,12 +339,6 @@ function saveToConfig(key: string, value: unknown): void {
   writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n', 'utf8');
 }
 
-/**
- * Get provider config with API key from environment or interactive prompt.
- *
- * @param {string} providerId - Provider ID
- * @returns {Object} Provider config with headers
- */
 async function getProviderConfig(providerId: string): Promise<Provider> {
   await loadModules();
   const providers = requireProviders();
@@ -423,9 +354,6 @@ async function getProviderConfig(providerId: string): Promise<Provider> {
     return { ...base, apiUrl: `${baseUrl}/api/chat` };
   }
 
-  // Local OpenAI-compatible servers (local, etc.) don't use API keys —
-  // they're served from localhost and the apiUrl is already baked into the
-  // provider config (or overridden via env var inside providers.js).
   if (base.local) {
     return base;
   }
@@ -448,7 +376,6 @@ async function getProviderConfig(providerId: string): Promise<Provider> {
       process.exit(1);
     }
 
-    // Validate key by fetching models
     process.stdout.write('Validating');
     startSpinner();
     const { ok } = await fetchProviderModels(providerId, apiKey);
@@ -475,12 +402,6 @@ async function getProviderConfig(providerId: string): Promise<Provider> {
   };
 }
 
-/**
- * Get signup/API key URL for a provider.
- *
- * @param {string} providerId - Provider ID
- * @returns {string} URL to get an API key
- */
 function getProviderSignupUrl(providerId: string): string {
   const urls: Record<string, string> = {
     xai: 'https://console.x.ai',
@@ -491,13 +412,6 @@ function getProviderSignupUrl(providerId: string): string {
   return urls[providerId] || 'the provider\'s website';
 }
 
-/**
- * Fetch available models from a provider's API.
- *
- * @param {string} providerId - Provider ID
- * @param {string} apiKey - API key for authentication
- * @returns {Promise<{ok: boolean, models: Array<{id: string, name: string}>}>} Validation result with model list
- */
 async function fetchProviderModels(providerId: string, apiKey?: string): Promise<FetchModelsResult> {
   await loadModules();
   const base = requireProviders()[providerId];
@@ -549,9 +463,6 @@ async function fetchProviderModels(providerId: string, apiKey?: string): Promise
   }
 }
 
-/**
- * Tools always allowed in sandbox mode (safe, internal-only).
- */
 const SANDBOX_ALLOWED_TOOLS = new Set([
   'dot_memory_save', 'dot_memory_search', 'dot_memory_delete', 'dot_memory_list', 'dot_memory_read', 'dot_memory_update',
   'dot_web_search', 'dot_grokipedia_search',
@@ -565,20 +476,14 @@ const SANDBOX_ALLOWED_TOOLS = new Set([
   'dot_schedule_job', 'dot_list_jobs', 'dot_toggle_job', 'dot_cancel_job',
 ]);
 
-/** Tools that are allowed in sandbox but domain-gated via allowlist. */
 const SANDBOX_GATED_TOOLS = new Set(['dot_web_fetch', 'dot_browser_navigate']);
 
-/** Tools unlocked in sandbox when their preset is in the --allow list. */
 const SANDBOX_PRESET_TOOLS: Record<string, string[]> = {
   messages: ['dot_message_list', 'dot_message_send', 'dot_message_delete', 'dot_message_read'],
   images: ['dot_image_generate', 'dot_image_list', 'dot_image_search'],
   notifications: ['dot_notify_user'],
 };
 
-/**
- * Domain presets matching NemoClaw's policy preset pattern.
- * Each preset maps to a list of allowed domains.
- */
 const DOMAIN_PRESETS: Record<string, string[]> = {
   github: ['github.com', 'api.github.com', 'raw.githubusercontent.com'],
   slack: ['slack.com', 'api.slack.com'],
@@ -591,13 +496,6 @@ const DOMAIN_PRESETS: Record<string, string[]> = {
   telegram: ['api.telegram.org'],
 };
 
-/**
- * Resolve --allow values into a Set of allowed domains.
- * Accepts preset names (e.g., "github") or raw domains (e.g., "api.example.com").
- *
- * @param {Array<string>} allowList - Preset names or domain names
- * @returns {Set<string>} Resolved domain set
- */
 function resolveSandboxDomains(allowList: string[] = []): Set<string> {
   const domains = new Set<string>();
   for (const entry of allowList) {
@@ -612,18 +510,10 @@ function resolveSandboxDomains(allowList: string[] = []): Set<string> {
   return domains;
 }
 
-/**
- * Check if a URL's hostname matches the sandbox domain allowlist.
- *
- * @param {string} urlStr - URL to check
- * @param {Set<string>} allowedDomains - Set of allowed domain names
- * @returns {boolean} Whether the domain is allowed
- */
 function isDomainAllowed(urlStr: string, allowedDomains: Set<string>): boolean {
   try {
     const { hostname } = new URL(urlStr);
     if (allowedDomains.has(hostname)) return true;
-    // Support wildcard subdomains (e.g., "atlassian.net" matches "myteam.atlassian.net")
     for (const domain of allowedDomains) {
       if (hostname.endsWith(`.${domain}`)) return true;
     }
@@ -633,13 +523,6 @@ function isDomainAllowed(urlStr: string, allowedDomains: Set<string>): boolean {
   }
 }
 
-/**
- * Wrap a tool's execute function with domain enforcement.
- *
- * @param {Object} tool - Tool definition
- * @param {Set<string>} allowedDomains - Allowed domains
- * @returns {Object} Tool with domain-gated execute
- */
 function wrapWithDomainGate(tool: ToolDefinition, allowedDomains: Set<string>): ToolDefinition {
   const original = tool.execute;
   return {
@@ -656,21 +539,6 @@ function wrapWithDomainGate(tool: ToolDefinition, allowedDomains: Set<string>): 
   };
 }
 
-/**
- * Get tools filtered by sandbox mode with domain-gated network access.
- *
- * Mirrors NemoClaw's deny-by-default policy:
- * - No filesystem access (file_*)
- * - No code execution (dot_run_code)
- * - No outbound messaging (message_*)
- * - No image generation, notifications, or app scaffolding
- * - Network tools (dot_web_fetch, dot_browser_navigate) restricted to domain allowlist
- * - Curated search APIs (dot_web_search, dot_grokipedia_search) always allowed
- *
- * @param {boolean} sandbox - Whether sandbox mode is active
- * @param {Array<string>} allowList - Domain presets or raw domains to allow
- * @returns {Array} Filtered and gated tools
- */
 function getActiveTools(sandbox = false, allowList: string[] = []): ToolDefinition[] {
   const allCoreTools = requireCoreTools();
   if (!sandbox) return allCoreTools;
@@ -678,7 +546,6 @@ function getActiveTools(sandbox = false, allowList: string[] = []): ToolDefiniti
   const allowedDomains = resolveSandboxDomains(allowList);
   const allowLower = new Set(allowList.map((a) => a.toLowerCase()));
 
-  // Build set of preset-unlocked tool names
   const presetUnlocked = new Set<string>();
   for (const [preset, toolNames] of Object.entries(SANDBOX_PRESET_TOOLS)) {
     if (allowLower.has(preset)) {
@@ -701,28 +568,17 @@ function getActiveTools(sandbox = false, allowList: string[] = []): ToolDefiniti
   return tools;
 }
 
-/**
- * Initialize stores.
- *
- * @param {string} dbPath - Path to SQLite database
- * @param {boolean} verbose - Show initialization logs
- * @param {string} customSystemPrompt - Custom system prompt to prepend
- * @returns {Promise<Object>} Initialized stores
- */
 async function initStores(dbPath: string, verbose = false, customSystemPrompt = ''): Promise<InitializedStores> {
   await loadModules();
   const stores = requireStores();
 
-  // Import defaultSystemPrompt for custom builder
   const { defaultSystemPrompt } = await import('../storage/SQLiteAdapter.js');
 
-  // Suppress init logs unless verbose
   const originalLog = console.log;
   if (!verbose) {
     console.log = () => {};
   }
 
-  // Build custom systemPromptBuilder that prepends user's text
   const systemPromptBuilder = customSystemPrompt
     ? (prefs: { agentName?: string; agentPersonality?: string }) => `${customSystemPrompt}\n\n${defaultSystemPrompt(prefs)}`
     : undefined;
@@ -748,19 +604,11 @@ async function initStores(dbPath: string, verbose = false, customSystemPrompt = 
   const eventStore = new stores.SQLiteEventStore();
   await eventStore.init(dbPath);
 
-  // Restore console.log
   console.log = originalLog;
 
   return { sessionStore, cronStore, taskStore, triggerStore, memoryStore, eventStore };
 }
 
-/**
- * Stream events from an agentLoop iterable to stdout.
- * Handles thinking markers, text deltas, tool status, and errors.
- *
- * @param {AsyncIterable<Object>} events - Async iterable of agentLoop events
- * @returns {Promise<string>} Accumulated assistant text content
- */
 async function streamEvents(events: AsyncIterable<AgentEvent>): Promise<string> {
   let hasThinkingText = false;
   let thinkingDone = false;
@@ -821,12 +669,6 @@ async function streamEvents(events: AsyncIterable<AgentEvent>): Promise<string> 
   return assistantContent;
 }
 
-/**
- * Run a single chat message and stream output.
- *
- * @param {string} message - User message
- * @param {Object} options - CLI options
- */
 async function runChat(message: string, options: CliOptions): Promise<void> {
   const storesObj = await initStores(options.db, options.verbose, options.system);
   const provider = await getProviderConfig(options.provider);
@@ -868,11 +710,6 @@ async function runChat(message: string, options: CliOptions): Promise<void> {
   process.exit(0);
 }
 
-/**
- * Run interactive REPL.
- *
- * @param {Object} options - CLI options
- */
 async function runRepl(options: CliOptions): Promise<void> {
   const storesObj = await initStores(options.db, options.verbose, options.system);
   const provider = await getProviderConfig(options.provider);
@@ -940,7 +777,6 @@ async function runRepl(options: CliOptions): Promise<void> {
         return;
       }
 
-      // Multi-line input mode
       if (trimmed === '"""') {
         let multiLine = '';
         const collectLines = () => {
@@ -1001,7 +837,6 @@ async function runRepl(options: CliOptions): Promise<void> {
           console.log('');
         } else {
           stopSpinner('');
-          // Fall back to static list
           const base = providers[options.provider];
           if (base?.models?.length) {
             console.log('');
@@ -1060,9 +895,6 @@ async function runRepl(options: CliOptions): Promise<void> {
   promptUser();
 }
 
-/**
- * Full-screen TUI chat (alt-screen, zero deps).
- */
 async function runTuiCommand(options: CliOptions): Promise<void> {
   const storesObj = await initStores(options.db, options.verbose, options.system);
   const provider = await getProviderConfig(options.provider);
@@ -1105,11 +937,6 @@ async function runTuiCommand(options: CliOptions): Promise<void> {
   });
 }
 
-/**
- * Run HTTP server.
- *
- * @param {Object} options - CLI options
- */
 async function runServer(options: CliOptions): Promise<void> {
   const port = parseInt(options.port, 10);
   const storesObj = await initStores(options.db, options.verbose, options.system);
@@ -1117,7 +944,6 @@ async function runServer(options: CliOptions): Promise<void> {
   const loop = requireAgentLoop();
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-    // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -1130,16 +956,13 @@ async function runServer(options: CliOptions): Promise<void> {
 
     const url = new URL(req.url ?? '', `http://localhost:${port}`);
 
-    // Health check
     if (req.method === 'GET' && url.pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok', version: VERSION }));
       return;
     }
 
-    // OpenAI-compatible endpoints (when --openai flag is set)
     if (options.openai) {
-      // GET /v1/models - list available models
       if (req.method === 'GET' && url.pathname === '/v1/models') {
         const models = [
           { id: 'grok-3', object: 'model', owned_by: 'xai' },
@@ -1153,7 +976,6 @@ async function runServer(options: CliOptions): Promise<void> {
         return;
       }
 
-      // POST /v1/chat/completions - OpenAI-compatible chat endpoint
       if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
         let body = '';
         for await (const chunk of req) body += chunk;
@@ -1171,7 +993,6 @@ async function runServer(options: CliOptions): Promise<void> {
             return;
           }
 
-          // Determine provider from model name
           let providerId = 'xai';
           if (model.startsWith('claude')) providerId = 'anthropic';
           else if (model.startsWith('gpt')) providerId = 'openai';
@@ -1197,7 +1018,6 @@ async function runServer(options: CliOptions): Promise<void> {
               'Connection': 'keep-alive',
             });
 
-            // Send initial role chunk
             const roleChunk = {
               id: completionId,
               object: 'chat.completion.chunk',
@@ -1238,7 +1058,6 @@ async function runServer(options: CliOptions): Promise<void> {
             res.write('data: [DONE]\n\n');
             res.end();
           } else {
-            // Non-streaming response
             let fullContent = '';
             for await (const event of loop({
               model,
@@ -1275,7 +1094,6 @@ async function runServer(options: CliOptions): Promise<void> {
       }
     }
 
-    // Chat endpoint
     if (req.method === 'POST' && url.pathname === '/chat') {
       let body = '';
       for await (const chunk of req) body += chunk;
@@ -1337,7 +1155,6 @@ async function runServer(options: CliOptions): Promise<void> {
       return;
     }
 
-    // 404
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found' }));
   });
@@ -1357,11 +1174,6 @@ async function runServer(options: CliOptions): Promise<void> {
   });
 }
 
-/**
- * List all available tools.
- *
- * @param {Object} options - CLI options
- */
 async function runTools(options: CliOptions): Promise<void> {
   await loadModules();
   const allCoreTools = requireCoreTools();
@@ -1374,7 +1186,6 @@ async function runTools(options: CliOptions): Promise<void> {
 
   console.log(`\ndotbot tools (${allCoreTools.length})\n`);
 
-  // Group tools by category based on name prefix
   const categories: Record<string, string[]> = {};
   for (const tool of allCoreTools) {
     const prefix = tool.name.split('_')[0] ?? '';
@@ -1391,27 +1202,17 @@ async function runTools(options: CliOptions): Promise<void> {
   console.log();
 }
 
-/**
- * Show database statistics.
- *
- * @param {Object} options - CLI options
- */
 async function runStats(options: CliOptions): Promise<void> {
   const storesObj = await initStores(options.db, options.verbose, options.system);
 
-  // Sessions
   const sessions = await storesObj.sessionStore.listSessions('cli-user');
 
-  // Memory
   const memories = await storesObj.memoryStore.getAllMemories('cli-user');
 
-  // Jobs (need to get session IDs first)
   const jobs = await storesObj.cronStore.listTasksBySessionIds(['default'], 'cli-user');
 
-  // Tasks
   const tasks = await storesObj.taskStore.getTasks('cli-user');
 
-  // Triggers
   const triggers = await storesObj.triggerStore.listTriggers('cli-user');
 
   if (options.json) {
@@ -1437,13 +1238,6 @@ async function runStats(options: CliOptions): Promise<void> {
   console.log();
 }
 
-/**
- * Manage memories.
- *
- * @param {Object} options - CLI options
- * @param {string} subcommand - list, search, or delete
- * @param {string} query - Search query or key to delete
- */
 async function runMemory(options: CliOptions, subcommand: string | undefined, query: string): Promise<void> {
   const storesObj = await initStores(options.db, options.verbose, options.system);
 
@@ -1483,13 +1277,6 @@ async function runMemory(options: CliOptions, subcommand: string | undefined, qu
   console.log();
 }
 
-/**
- * Manage scheduled jobs.
- *
- * @param {Object} options - CLI options
- * @param {string} subcommand - list or delete
- * @param {string} jobId - Job ID to delete
- */
 async function runJobs(options: CliOptions, subcommand: string | undefined, jobId: string | undefined): Promise<void> {
   const storesObj = await initStores(options.db, options.verbose, options.system);
 
@@ -1524,13 +1311,6 @@ async function runJobs(options: CliOptions, subcommand: string | undefined, jobI
   }
 }
 
-/**
- * Manage active tasks.
- *
- * @param {Object} options - CLI options
- * @param {string} subcommand - list or delete
- * @param {string} taskId - Task ID to delete
- */
 async function runTasks(options: CliOptions, subcommand: string | undefined, taskId: string | undefined): Promise<void> {
   const storesObj = await initStores(options.db, options.verbose, options.system);
 
@@ -1554,8 +1334,6 @@ async function runTasks(options: CliOptions, subcommand: string | undefined, tas
   console.log(`\nTasks (${tasks.length})\n`);
 
   for (const taskDoc of tasks) {
-    // The CLI reads raw row fields (snake_case) that aren't on the typed
-    // TaskDoc; view the row as a dynamic record to preserve runtime access.
     const task: Record<string, unknown> = { ...taskDoc };
     const parsedSteps: unknown = task.steps ? JSON.parse(String(task.steps)) : [];
     const steps = Array.isArray(parsedSteps) ? parsedSteps : [];
@@ -1569,13 +1347,6 @@ async function runTasks(options: CliOptions, subcommand: string | undefined, tas
   }
 }
 
-/**
- * Manage chat sessions.
- *
- * @param {Object} options - CLI options
- * @param {string} subcommand - list or delete
- * @param {string} sessionId - Session ID to delete
- */
 async function runSessions(options: CliOptions, subcommand: string | undefined, sessionId: string | undefined): Promise<void> {
   const storesObj = await initStores(options.db, options.verbose, options.system);
 
@@ -1609,11 +1380,6 @@ async function runSessions(options: CliOptions, subcommand: string | undefined, 
   }
 }
 
-/**
- * View audit log events.
- *
- * @param {Object} options - CLI options
- */
 async function runEvents(options: CliOptions): Promise<void> {
   const storesObj = await initStores(options.db, options.verbose, options.system);
 
@@ -1651,39 +1417,30 @@ async function runEvents(options: CliOptions): Promise<void> {
   console.log();
 }
 
-/**
- * Check environment and configuration.
- *
- * @param {Object} options - CLI options
- */
 async function runDoctor(options: CliOptions): Promise<void> {
   console.log(`\ndotbot doctor\n`);
 
-  // Node.js version
   const nodeVersion = process.version;
   const nodeMajor = parseInt(nodeVersion.slice(1).split('.')[0] ?? '', 10);
   const nodeOk = nodeMajor >= 22;
   console.log(`  Node.js: ${nodeVersion} ${nodeOk ? '\u2713' : '\u2717 (requires >= 22.0.0)'}`);
 
-  // Database check
   const dbPath = options.db;
   let dbOk = false;
   try {
     if (existsSync(dbPath)) {
-      // Try to open database
       const { DatabaseSync } = await import('node:sqlite');
       const db = new DatabaseSync(dbPath, { open: true });
       db.close();
       dbOk = true;
     } else {
-      dbOk = true; // Will be created on first use
+      dbOk = true;
     }
   } catch {
     dbOk = false;
   }
   console.log(`  Database: ${dbPath} ${dbOk ? '\u2713' : '\u2717 not accessible'}`);
 
-  // Config file check
   let configOk = false;
   let configMsg = '';
   if (existsSync(CONFIG_PATH)) {
@@ -1700,7 +1457,6 @@ async function runDoctor(options: CliOptions): Promise<void> {
   }
   console.log(`  Config: ${configMsg}`);
 
-  // API Keys
   console.log(`\n  API Keys:`);
   const apiKeys = [
     { name: 'XAI_API_KEY', env: process.env.XAI_API_KEY },
@@ -1716,11 +1472,6 @@ async function runDoctor(options: CliOptions): Promise<void> {
   console.log();
 }
 
-/**
- * List available models from the provider's API.
- *
- * @param {Object} options - CLI options
- */
 async function runModels(options: CliOptions): Promise<void> {
   await loadModules();
   const base = requireProviders()[options.provider];
@@ -1744,7 +1495,6 @@ async function runModels(options: CliOptions): Promise<void> {
     stopSpinner('failed');
     console.error(`Could not fetch models from ${base.name}. Check your API key.`);
 
-    // Fall back to static list
     if (base.models?.length) {
       console.log(`\nLocal model list (${base.name}):\n`);
       for (const m of base.models) {
@@ -1772,9 +1522,6 @@ async function runModels(options: CliOptions): Promise<void> {
   console.log();
 }
 
-/**
- * Main entry point.
- */
 async function main(): Promise<void> {
   const args = parseCliArgs();
 
@@ -1790,7 +1537,6 @@ async function main(): Promise<void> {
 
   const command = args.positionals[0];
 
-  // Handle piped input from stdin
   if (!process.stdin.isTTY && !command) {
     let input = '';
     for await (const chunk of process.stdin) {

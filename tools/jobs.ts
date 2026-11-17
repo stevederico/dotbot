@@ -1,10 +1,3 @@
-/**
- * Job Tools
- *
- * Agent tools for scheduling and managing jobs (time-triggered scheduled prompts).
- * Each tool receives (input, signal, context) where context.cronStore
- * provides the storage backend.
- */
 
 import { parseInterval } from '../storage/cron_constants.js';
 import type {
@@ -15,16 +8,10 @@ import type {
   ToolResult,
 } from "../types.js";
 
-/** Extract a human-readable message from an unknown thrown value. */
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/**
- * A scheduled job record as returned by CronStore.listTasks()/getTask().
- * Modeled structurally from the fields read in this module. Date-ish fields are
- * `unknown` because adapters may store a Date object or an ISO string.
- */
 interface CronTaskRecord {
   name?: string;
   enabled?: boolean;
@@ -35,10 +22,6 @@ interface CronTaskRecord {
   lastRunAt?: unknown;
 }
 
-/**
- * Render a possibly-Date-or-string value via toISOString when available,
- * mirroring the original `value?.toISOString?.() || value` behavior.
- */
 function isoOf(value: unknown): string {
   if (value !== null && typeof value === "object" && "toISOString" in value) {
     const fn: unknown = value.toISOString;
@@ -50,11 +33,6 @@ function isoOf(value: unknown): string {
   return typeof value === "string" ? value : value == null ? "" : String(value);
 }
 
-/**
- * Read a CronTaskRecord view from a loose store row. CronStore returns records
- * with arbitrary-typed (possibly non-JSON, e.g. Date) fields; this reads the
- * fields these tools use with narrowing.
- */
 function toCronTask(row: Record<string, unknown>): CronTaskRecord {
   const r: Record<string, unknown> = row;
   return {
@@ -68,9 +46,6 @@ function toCronTask(row: Record<string, unknown>): CronTaskRecord {
   };
 }
 
-/**
- * Agent tools for scheduling and managing jobs
- */
 export const jobTools: ToolDefinition[] = [
   {
     name: "dot_schedule_job",

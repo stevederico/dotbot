@@ -11,9 +11,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-/**
- * Code execution tool: run JavaScript in a sandboxed Node.js subprocess
- */
 export const codeTools: ToolDefinition[] = [
   {
     name: "dot_run_code",
@@ -35,13 +32,11 @@ export const codeTools: ToolDefinition[] = [
       try {
         await writeFile(tmpFile, String(input.code), "utf-8");
 
-        // Allowlist-only env
         const cleanEnv: Record<string, string | undefined> = {
           PATH: process.env.PATH,
           TMPDIR: process.env.TMPDIR || '/tmp',
         };
 
-        // Sandboxed Node.js subprocess with permission model
         const { stdout, stderr } = await execFileAsync(
           "node",
           [

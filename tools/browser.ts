@@ -1,15 +1,8 @@
-// tools/browser.ts
-// Headless browser automation tools for the DotBot agent.
-// Provides 7 tools: navigate, read_page, click, type, screenshot, extract, close.
-// Uses a singleton Chromium instance with per-user browser contexts (isolated cookies/storage).
-// Zero npm dependencies - uses Chrome DevTools Protocol directly.
 
 import { CDPClient } from '../core/cdp.js';
 import { launchBrowser, createBrowserContext, closeBrowserContext, killBrowser } from '../core/browser-launcher.js';
 import { writeFile, mkdir, readdir, unlink, stat } from 'node:fs/promises';
 import type { AgentContext, ToolDefinition } from '../types.js';
-
-// ── Constants ──
 
 const MAX_CONTEXTS = 10;
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -17,21 +10,16 @@ const NAV_TIMEOUT_MS = 30_000;
 const SCREENSHOT_DIR = '/tmp/dotbot_screenshots';
 const MAX_CONTENT_CHARS = 8000;
 const MAX_SCREENSHOTS_PER_USER = 20;
-const SCREENSHOT_TTL_MS = 60 * 60 * 1000; // 1 hour
-const STALE_SCREENSHOT_MS = 24 * 60 * 60 * 1000; // 24 hours
+const SCREENSHOT_TTL_MS = 60 * 60 * 1000;
+const STALE_SCREENSHOT_MS = 24 * 60 * 60 * 1000;
 
-// ── Types ──
-
-/** Result of validating a URL for SSRF safety. */
 interface UrlValidation {
   valid: boolean;
   error?: string;
 }
 
-/** Handle to the shared Chromium instance, as returned by launchBrowser(). */
 type BrowserHandle = Awaited<ReturnType<typeof launchBrowser>>;
 
-/** A per-user browser context: a CDP client + its target and idle bookkeeping. */
 interface BrowserContextEntry {
   cdp: CDPClient;
   targetWsUrl: string;
@@ -39,24 +27,14 @@ interface BrowserContextEntry {
   idleTimer: ReturnType<typeof setTimeout>;
 }
 
-/** A screenshot file with its modification time, used during pruning. */
 interface ScreenshotFileStat {
   name: string;
   path: string;
   mtimeMs: number;
 }
 
-/** Builds a public URL for a saved screenshot filename. */
 type ScreenshotUrlPattern = (filename: string) => string;
 
-// ── SSRF Validation ──
-
-/**
- * Validate a URL is safe to navigate to (blocks SSRF).
- * Rejects non-http(s) schemes, localhost, and private IP ranges.
- *
- * @param url - URL to validate
- */
 function validateUrl(url: string): UrlValidation {
   try {
     const parsed = new URL(url);
@@ -87,17 +65,10 @@ function validateUrl(url: string): UrlValidation {
   }
 }
 
-/** Extract a string error message from an unknown thrown value. */
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-// ── BrowserSessionManager (singleton) ──
-
-/**
- * Manages a shared Chromium browser instance with per-user contexts.
- * LRU eviction at MAX_CONTEXTS, idle timeout per context, graceful shutdown.
- */
 class BrowserSessionManager {
   browser: BrowserHandle | null;
   contexts: Map<string, BrowserContextEntry>;
@@ -107,9 +78,6 @@ class BrowserSessionManager {
     this.contexts = new Map();
   }
 
-  /**
-   * Launch the shared Chromium instance if not already running.
-   */
   async ensureBrowser(): Promise<BrowserHandle> {
     if (!this.browser || this.browser.process.killed) {
       this.browser = await launchBrowser();
@@ -118,12 +86,6 @@ class BrowserSessionManager {
     return this.browser;
   }
 
-  /**
-   * Get or create a browser context + CDP client for a user.
-   * Resets idle timer on each access. Evicts LRU context if at capacity.
-   *
-   * @param userID - User identifier for context isolation
-   */
   async getClient(userID: string): Promise<CDPClient> {
     const existing = this.contexts.get(userID);
     if (existing) {
@@ -133,7 +95,6 @@ class BrowserSessionManager {
       return existing.cdp;
     }
 
-    // Evict LRU if at capacity
     if (this.contexts.size >= MAX_CONTEXTS) {
       let oldest: BrowserContextEntry | null = null;
       let oldestId: string | null = null;
@@ -148,18 +109,11 @@ class BrowserSessionManager {
 
     const browser = await this.ensureBrowser();
 
-    // Create new tab/context
     const targetWsUrl = await createBrowserContext(browser.wsUrl);
 
-    // Connect CDP client to the new target
     const cdp = new CDPClient(targetWsUrl);
     await cdp.connect();
 
-    // When the caller pointed us at a real installed browser (headed) keep its
-    // native window size and native user agent — overriding either makes the
-    // window letterbox into a 1280x720 box and tags every request as a bot.
-    // For the bundled chrome-headless-shell fallback we still set both for
-    // screenshot consistency.
     const headed = !!process.env.DOTBOT_CHROME_PATH;
     if (!headed) {
       await cdp.setViewport(1280, 720);
@@ -174,10 +128,6 @@ class BrowserSessionManager {
     return cdp;
   }
 
-  /**
-   * Close a single user's browser context and clean up.
-   * @param userID - User whose context to close
-   */
   async closeContext(userID: string): Promise<void> {
     const entry = this.contexts.get(userID);
     if (!entry) return;
@@ -189,15 +139,11 @@ class BrowserSessionManager {
       entry.cdp.close();
       await closeBrowserContext(entry.targetWsUrl);
     } catch {
-      // Context may already be closed
     }
 
     console.log(`[browser] context closed for user ${userID}`);
   }
 
-  /**
-   * Close all contexts and the browser instance. Called during graceful shutdown.
-   */
   async closeAll(): Promise<void> {
     for (const [userID] of this.contexts) {
       await this.closeContext(userID);
@@ -206,7 +152,6 @@ class BrowserSessionManager {
       try {
         killBrowser(this.browser.process);
       } catch {
-        // Browser may already be closed
       }
       this.browser = null;
       console.log('[browser] Chromium closed');
@@ -216,15 +161,6 @@ class BrowserSessionManager {
 
 export const sessionManager = new BrowserSessionManager();
 
-// ── Screenshot Cleanup ──
-
-/**
- * Prune old screenshots for a specific user.
- * Deletes files older than SCREENSHOT_TTL_MS, then enforces MAX_SCREENSHOTS_PER_USER
- * by removing oldest files first. Best-effort — errors are logged, not thrown.
- *
- * @param userID - User whose screenshots to prune
- */
 async function pruneScreenshots(userID: string): Promise<void> {
   try {
     const files = await readdir(SCREENSHOT_DIR);
@@ -243,13 +179,11 @@ async function pruneScreenshots(userID: string): Promise<void> {
       .filter((f): f is ScreenshotFileStat => f !== null)
       .sort((a, b) => b.mtimeMs - a.mtimeMs);
 
-    // Delete files older than TTL
     const expired = valid.filter(f => now - f.mtimeMs > SCREENSHOT_TTL_MS);
     for (const f of expired) {
       await unlink(f.path).catch(() => {});
     }
 
-    // Enforce per-user cap on remaining files
     const remaining = valid.filter(f => now - f.mtimeMs <= SCREENSHOT_TTL_MS);
     if (remaining.length > MAX_SCREENSHOTS_PER_USER) {
       const excess = remaining.slice(MAX_SCREENSHOTS_PER_USER);
@@ -263,14 +197,9 @@ async function pruneScreenshots(userID: string): Promise<void> {
       console.log(`[browser] pruned ${deleted} screenshot(s) for user ${userID}`);
     }
   } catch {
-    // Directory may not exist yet — that's fine
   }
 }
 
-/**
- * Remove stale screenshots (>24h) from the screenshot directory.
- * Called once at server startup to reclaim disk space from previous runs.
- */
 export async function cleanupStaleScreenshots(): Promise<void> {
   try {
     const files = await readdir(SCREENSHOT_DIR);
@@ -291,17 +220,9 @@ export async function cleanupStaleScreenshots(): Promise<void> {
       console.log(`[browser] startup cleanup: removed ${deleted} stale screenshot(s)`);
     }
   } catch {
-    // Directory may not exist — that's fine
   }
 }
 
-// ── Helpers ──
-
-/**
- * Build a structured summary of interactive elements on the page via DOM evaluation.
- *
- * @param cdp - CDP client instance
- */
 async function getPageStructure(cdp: CDPClient): Promise<string> {
   const result = await cdp.evaluate(`
     (() => {
@@ -337,13 +258,6 @@ async function getPageStructure(cdp: CDPClient): Promise<string> {
   return typeof result === 'string' ? result : String(result ?? '');
 }
 
-// ── Tool Definitions ──
-
-/**
- * Create browser automation tools with configurable screenshot URL pattern
- *
- * @param screenshotUrlPattern - Function (filename) => URL string
- */
 export function createBrowserTools(
   screenshotUrlPattern: ScreenshotUrlPattern = (filename) => `/api/agent/screenshots/${filename}`
 ): ToolDefinition[] {
@@ -371,7 +285,6 @@ export function createBrowserTools(
           const cdp = await sessionManager.getClient(String(context.userID));
           await cdp.navigate(url);
 
-          // Wait for load event then network idle for SPAs
           await cdp.waitForLoad(NAV_TIMEOUT_MS).catch(() => {});
           await cdp.waitForNetworkIdle({ timeout: 5000, idleTime: 300 });
 
@@ -430,7 +343,6 @@ export function createBrowserTools(
             return `Page: ${currentUrl}\n\n${tree}`;
           }
 
-          // Default: text mode
           const selector = typeof input.selector === 'string' ? input.selector : undefined;
           let text;
           if (selector) {
@@ -486,11 +398,9 @@ export function createBrowserTools(
             return 'No page loaded. Use dot_browser_navigate first.';
           }
 
-          // Use retry helpers for more reliable clicking
           if (selector) {
             await cdp.clickWithRetry(selector);
           } else {
-            // For text-based clicking, use retry wrapper
             await cdp.retry(async () => {
               const el = await cdp.getByText(String(text));
               if (!el) throw new Error(`Element with text "${text}" not found`);
@@ -498,7 +408,6 @@ export function createBrowserTools(
             });
           }
 
-          // Wait for network to settle after click
           await cdp.waitForNetworkIdle({ timeout: 5000, idleTime: 300 });
 
           const title = await cdp.getTitle();
@@ -560,12 +469,10 @@ export function createBrowserTools(
           const inputPlaceholder = typeof input.placeholder === 'string' ? input.placeholder : undefined;
           const inputText = String(input.text);
 
-          // Determine selector to use
           let selector;
           if (inputSelector) {
             selector = inputSelector;
           } else if (inputLabel) {
-            // Find input by label
             const labelSelector = await cdp.evaluate(`
               (() => {
                 const label = Array.from(document.querySelectorAll('label')).find(l =>
@@ -765,5 +672,4 @@ export function createBrowserTools(
   ];
 }
 
-// Export default tools with default screenshot pattern
 export const browserTools = createBrowserTools();

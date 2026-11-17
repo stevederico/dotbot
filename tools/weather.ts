@@ -1,6 +1,3 @@
-/**
- * Weather tool using Open-Meteo API (no API key required)
- */
 
 import type { ToolDefinition, JsonObject } from "../types.js";
 
@@ -8,11 +5,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-/**
- * Convert WMO weather code to human-readable text.
- * @param code - WMO weather condition code
- * @returns Human-readable weather condition
- */
 function weatherCodeToText(code: number): string {
   const codes: Record<number, string> = {
     0: "Clear sky",
@@ -46,7 +38,6 @@ export const weatherTools: ToolDefinition[] = [
     },
     execute: async (input: JsonObject, signal: AbortSignal | undefined): Promise<string> => {
       try {
-        // Geocode location
         const geoRes = await fetch(
           `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(String(input.location))}&count=1`,
           { signal }
@@ -63,7 +54,6 @@ export const weatherTools: ToolDefinition[] = [
         const name = first.name;
         const country = first.country;
 
-        // Fetch weather
         const wxRes = await fetch(
           `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph`,
           { signal }

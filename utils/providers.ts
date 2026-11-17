@@ -1,20 +1,12 @@
-/**
- * AI provider registry for the agent library
- *
- * Provider configuration schema without environment variable coupling.
- * API keys and base URLs should be injected at runtime via createAgent().
- */
 
 import process from "node:process";
 
 import type { ProviderRegistry } from "../types.js";
 
-/** Narrow an unknown value to an indexable record. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-/** Extract `choices[0].message.content` from an OpenAI-compatible response. */
 function openaiContent(data: unknown): string | undefined {
   if (!isRecord(data)) return undefined;
   const choices = data.choices;
@@ -27,7 +19,6 @@ function openaiContent(data: unknown): string | undefined {
   return typeof content === "string" ? content : undefined;
 }
 
-/** Extract `content[0].text` from an Anthropic response. */
 function anthropicContent(data: unknown): string | undefined {
   if (!isRecord(data)) return undefined;
   const content = data.content;
@@ -38,12 +29,6 @@ function anthropicContent(data: unknown): string | undefined {
   return typeof text === "string" ? text : undefined;
 }
 
-/**
- * Registry of supported AI providers.
- *
- * Each provider defines its API URL, default model, available models,
- * header construction, request/response formatting, and endpoint path.
- */
 export const AI_PROVIDERS: ProviderRegistry = {
   anthropic: {
     id: 'anthropic',
@@ -167,10 +152,6 @@ export const AI_PROVIDERS: ProviderRegistry = {
     formatResponse: (data) => openaiContent(data)
   },
   local: {
-    // Local OpenAI-compatible server (e.g. local LLM server, LM Studio,
-    // vLLM, llama.cpp server). Routes through the `local` branch in
-    // core/agent.js which auto-detects gpt-oss channel tokens, native
-    // reasoning, and plain-text responses. Override the URL with LOCAL_LLM_URL.
     id: 'local',
     name: 'Local',
     apiUrl: process.env.LOCAL_LLM_URL || 'http://127.0.0.1:1316/v1',

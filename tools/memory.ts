@@ -1,25 +1,16 @@
-// agent/memory.js
-// Agent memory tools that write to the shared Memory collection via memoryStore.
-// Uses SQLiteMemoryStore or any compatible store implementation.
 
 import type { ToolDefinition, ToolResult } from "../types.js";
 
-/** Extract a human-readable message from an unknown thrown value. */
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** The structured value an agent memory stores. */
 interface MemoryValue {
   content?: string;
   tags?: string[];
   source?: string;
 }
 
-/**
- * A memory record as returned by the MemoryStore. `value` may be a structured
- * object (MemoryValue) or an arbitrary JSON value depending on the writer.
- */
 interface MemoryRecord {
   key: string;
   value: MemoryValue | unknown;
@@ -27,7 +18,6 @@ interface MemoryRecord {
   app_id?: string;
 }
 
-/** Narrow an unknown memory store row into a MemoryRecord. */
 function toMemoryRecord(row: unknown): MemoryRecord | null {
   if (row === null || typeof row !== "object") return null;
   const r: Record<string, unknown> = { ...row };
@@ -43,12 +33,10 @@ function toMemoryRecord(row: unknown): MemoryRecord | null {
   };
 }
 
-/** Type guard for a structured MemoryValue object (vs a primitive value). */
 function isMemoryValue(value: unknown): value is MemoryValue {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-/** Render a memory's value as display text (content field or JSON). */
 function valueContent(value: unknown): string {
   if (isMemoryValue(value) && typeof value.content === "string") {
     return value.content;
@@ -56,7 +44,6 @@ function valueContent(value: unknown): string {
   return JSON.stringify(value);
 }
 
-/** Render a memory's tags suffix, if any. */
 function tagsSuffix(value: unknown, prefix: string): string {
   if (isMemoryValue(value) && Array.isArray(value.tags) && value.tags.length) {
     return `${prefix}${value.tags.join(", ")}`;
@@ -64,13 +51,6 @@ function tagsSuffix(value: unknown, prefix: string): string {
   return "";
 }
 
-/**
- * Generate a slug-style key from content text.
- * Takes the first ~50 characters, strips non-alphanumeric chars, and joins with underscores.
- *
- * @param content - Raw content string
- * @returns Cleaned key like "users_favorite_color_is_blue"
- */
 function generateMemoryKey(content: string): string {
   return content
     .slice(0, 50)
@@ -79,8 +59,6 @@ function generateMemoryKey(content: string): string {
     .replace(/\s+/g, "_")
     .toLowerCase();
 }
-
-// ── Tool definitions for the agent ──
 
 export const memoryTools: ToolDefinition[] = [
   {
@@ -104,7 +82,6 @@ export const memoryTools: ToolDefinition[] = [
       },
       required: ["content"],
     },
-    /** Save a memory via memoryStore.writeMemory. */
     execute: async (input, signal, context): Promise<ToolResult> => {
       try {
         const { userID, memoryStore } = context;
@@ -141,7 +118,6 @@ export const memoryTools: ToolDefinition[] = [
       },
       required: ["query"],
     },
-    /** Search memories via memoryStore.readMemoryPattern and filter by query. */
     execute: async (input, signal, context): Promise<ToolResult> => {
       try {
         const { userID, memoryStore } = context;
@@ -200,7 +176,6 @@ export const memoryTools: ToolDefinition[] = [
       },
       required: ["key"],
     },
-    /** Delete a memory via memoryStore.deleteMemory. */
     execute: async (input, signal, context): Promise<ToolResult> => {
       try {
         const { userID, memoryStore } = context;
@@ -224,7 +199,6 @@ export const memoryTools: ToolDefinition[] = [
       type: "object",
       properties: {},
     },
-    /** List all memories via memoryStore.readMemoryPattern. */
     execute: async (input, signal, context): Promise<ToolResult> => {
       try {
         const { userID, memoryStore } = context;
@@ -268,7 +242,6 @@ export const memoryTools: ToolDefinition[] = [
       },
       required: ["key"],
     },
-    /** Read a specific memory via memoryStore.readMemory. */
     execute: async (input, signal, context): Promise<ToolResult> => {
       try {
         const { userID, memoryStore } = context;
@@ -322,7 +295,6 @@ export const memoryTools: ToolDefinition[] = [
       },
       required: ["key", "content"],
     },
-    /** Update or create a memory via memoryStore.writeMemory. */
     execute: async (input, signal, context): Promise<ToolResult> => {
       try {
         const { userID, memoryStore } = context;
